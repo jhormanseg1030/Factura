@@ -15,6 +15,7 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -26,6 +27,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
@@ -48,6 +50,9 @@ public class MiddlewareSimphony {
 
     @Value("${app.webhook.url}")
     private String apiUrl;
+
+    @Autowired
+    private FacturaCounterService facturaCounterService;
 
     public void main(String[] args){
         System.out.println("[MIDDLEWARE] iniciando servidor de integracion de simphony");
@@ -100,7 +105,7 @@ public class MiddlewareSimphony {
         }
     }
 
-    private List<Map<String, String>> extraerProductos(Document doc) {
+    private static List<Map<String, String>> extraerProductos(Document doc) {
         List<Map<String, String>> productos = new ArrayList<>();
         NodeList menuItems = doc.getElementsByTagName("OraPayloadEntityMI");
 
@@ -127,7 +132,7 @@ public class MiddlewareSimphony {
         return productos;
     }
 
-    private String generarJsonItems(List<Map<String, String>> productos) {
+    private static String generarJsonItems(List<Map<String, String>> productos) {
         StringBuilder json = new StringBuilder();
         json.append("[");
 
@@ -157,7 +162,7 @@ public class MiddlewareSimphony {
         return json.toString();
     }
 
-    public Map<String, String> extraerDatosFactura(File xmlFile) {
+    public static Map<String, String> extraerDatosFactura(File xmlFile) {
         try {
             if(!xmlFile.exists() || !xmlFile.canRead()){    
                 throw new IllegalArgumentException("El archivo XML no es accesible");
@@ -296,6 +301,8 @@ public class MiddlewareSimphony {
 
             if("TRUE".equalsIgnoreCase(generaDoc)){
                 Map<String, Object> jsonMap = new LinkedHashMap<>();
+                jsonMap.put("numero_factura", facturaCounterService.obtenerSiguienteNumero());
+                jsonMap.put("fecha_procesamiento", LocalDateTime.now().toString());
                 jsonMap.put("numero_ticket", checkNum);
                 jsonMap.put("check_id", checkId);
                 jsonMap.put("harmony_id", harmonyId);
