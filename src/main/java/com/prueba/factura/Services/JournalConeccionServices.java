@@ -50,4 +50,5 @@ public class JournalConeccionServices implements CommandLineRunner {
         thread.setDaemon(true);
         thread.start();
     }
+
 }

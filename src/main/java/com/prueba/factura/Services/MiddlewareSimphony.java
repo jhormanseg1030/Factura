@@ -54,6 +54,9 @@ public class MiddlewareSimphony {
     @Autowired
     private FacturaCounterService facturaCounterService;
 
+    @Autowired
+    private FacturaPendienteService facturaPendienteService;
+
     public void main(String[] args){
         System.out.println("[MIDDLEWARE] iniciando servidor de integracion de simphony");
 
@@ -362,10 +365,12 @@ public class MiddlewareSimphony {
                 logger.info("Respuesta exitosa");
             } else {
                 logger.warn("Respuesta con estado: {}", response.statusCode());
+                facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code: " + response.statusCode());
             }
             System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());
         }catch(Exception e){
-            logger.error("Error al enviar la solicitud Http POST", e);
+            logger.error("Error al enviar la solicitud Http POST, guardando en cola pendiente", e);
+            facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
         }
     }
 }
