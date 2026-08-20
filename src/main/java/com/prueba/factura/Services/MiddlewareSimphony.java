@@ -29,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -37,7 +38,7 @@ import org.w3c.dom.NodeList;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
-public class MiddlewareSimphony {
+public class MiddlewareSimphony implements CommandLineRunner {
 
     private static final Logger logger = LoggerFactory.getLogger(MiddlewareSimphony.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -54,17 +55,24 @@ public class MiddlewareSimphony {
     @Autowired
     private FacturaCounterService facturaCounterService;
 
-    public void main(String[] args){
-        System.out.println("[MIDDLEWARE] iniciando servidor de integracion de simphony");
+    private final HttpClient client = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_2)
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
 
+    @Override
+    public void run(String... args) throws Exception{
+        logger.info("Iniciando Vigilante de la carpeta de Simphony...");
         try{
             Files.createDirectories(Paths.get(dirInbox));
             Files.createDirectories(Paths.get(dirProcessed));
-        }catch(Exception e){
-            e.printStackTrace();
         }
-        //Vigilante de archivos de entrada
-        iniciarWatchService();
+        catch(Exception e){
+            logger.error("Error al crear los directorios inbox/processed", e);
+        }
+        Thread threadWatcher = new Thread(this::iniciarWatchService);
+        threadWatcher.setDaemon(true);
+        threadWatcher.start();
     }
 
     private void iniciarWatchService(){
@@ -73,9 +81,7 @@ public class MiddlewareSimphony {
                 Path pathInbox = Paths.get(dirInbox);
                 pathInbox.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
 
-                System.out.print("Vigilando la carpeta:" + dirInbox );
-
-                System.out.println(" - Presione Ctrl+C para detener");
+                logger.info("Vigilando la carpeta: {}", dirInbox);
 
                 while(true){
                     WatchKey key = watchService.take(); //esto espera a que llegue la informacion
@@ -88,7 +94,7 @@ public class MiddlewareSimphony {
                             String nombreArchivo = fileName.toString();
 
                             if(nombreArchivo.endsWith(".xml")){
-                                System.out.println("\n Archivo xml detectado: "+ nombreArchivo);
+                                logger.info("Nuevo XML detectado!!: {}", nombreArchivo);
 
                                 File xmlFile = new File(dirInbox, nombreArchivo);
 
@@ -101,7 +107,7 @@ public class MiddlewareSimphony {
                     if(!reset) break;
                 }
         }catch(Exception e){
-            System.err.println("Error en el WatchService:" +e.getMessage());
+            logger.error("Error en el WatchService:", e);
         }
     }
 
@@ -331,7 +337,7 @@ public class MiddlewareSimphony {
 
             Path origen = xmlFile.toPath();
             Path destino = Paths.get(dirProcessed, xmlFile.getName());
-            Files.move(origen, destino, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(origen, destino, StandardCopyOption.REPLACE_EXISTING);
             System.out.println("Archivo movido a carpeta de procesados /processed\n");
 
         }catch(Exception e){
@@ -342,11 +348,6 @@ public class MiddlewareSimphony {
 
     private void enviarHttpPOST(String jsonPayload){
         try{
-            HttpClient client = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_2)
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
-
             HttpRequest request = HttpRequest.newBuilder()
             .uri(URI.create(apiUrl))
             .timeout(Duration.ofSeconds(10))
