@@ -7,6 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -62,6 +64,12 @@ public class TestController {
     }
     public ResponseEntity<String> rateLimitFallback(Exception e) {
         return ResponseEntity.status(429)
-            .body("Demasiadas solicitudes. Intente mas tarde.");
+            .body("Demasiadas solicitudes. Intente mas tarde.");    
     }
+
+    @PostMapping("/mock-webhook")
+    public ResponseEntity<String> mockWebhook(@RequestBody String payload){
+        return ResponseEntity.ok("Factura recibida Correctamente");
+    }
+
 }

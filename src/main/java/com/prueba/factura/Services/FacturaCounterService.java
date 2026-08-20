@@ -5,11 +5,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+
+import jakarta.annotation.PreDestroy;
 
 @Service
 public class FacturaCounterService {
@@ -19,41 +22,48 @@ public class FacturaCounterService {
     @Value("${app.counter.file:factura_counter.txt}")
     private String counterFile;
 
-    private long contador = 0;
+    private final AtomicLong contador = new AtomicLong(0);
 
-    public synchronized long obtenerSiguienteNumero() {
-        contador = leerContador();
-        contador++;
-        guardarContador(contador);
-        logger.info("Factura #{} asignada", contador);
-        return contador;
+    public void init(){
+        long inicial = leerContador();
+        contador.set(inicial);
+        logger.info("Contador inicializado en memoria con el valor: {}", inicial);
     }
 
-    private long leerContador() {
+    public  long obtenerSiguienteNumero() {
+        long siguiente = contador.incrementAndGet();
+        logger.info("Factura #{} asignada", siguiente);
+        return siguiente;
+    }
+
+    @PreDestroy
+    public void guardarAlCerrar(){
+        guardarContador(contador.get());
+        logger.info("Contador final ({}) guardado en disco correctamente", contador.get());
+    }
+
+    private long leerContador(){
         Path path = Paths.get(counterFile);
-        if (!Files.exists(path)) {
-            logger.info("Archivo de contador no existe, creando en 0");
-            guardarContador(0);
+        if(!Files.exists(path)){
             return 0;
         }
-        try {
+        try{
             String contenido = Files.readString(path).trim();
-            if (contenido.isEmpty()) {
-                return 0;
-            }
-            return Long.parseLong(contenido);
-        } catch (IOException | NumberFormatException e) {
-            logger.warn("Error leyendo contador, reiniciando a 0: {}", e.getMessage());
+            return contenido.isEmpty() ? 0 : Long.parseLong(contenido);
+
+        }catch(IOException | NumberFormatException e){
+            logger.error("ERROR AL LEER EL CONTADOR, INICIANDO EN 0", e);
             return 0;
+
         }
     }
-
-    private void guardarContador(long valor) {
+    
+    private synchronized void guardarContador(long valor){
         Path path = Paths.get(counterFile);
-        try {
+        try{
             Files.writeString(path, String.valueOf(valor), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        } catch (IOException e) {
-            logger.error("Error guardando contador: {}", e.getMessage());
+        }catch(IOException e){
+            logger.error("Error al guardar el contador", e);
         }
     }
 }
