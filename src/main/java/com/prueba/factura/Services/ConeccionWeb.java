@@ -85,7 +85,8 @@ public class ConeccionWeb {
     private boolean isValidUrl(String urlString) {
         try {
             URL url = new URL(urlString);
-            return url.getProtocol().equals("https") && !url.getHost().isEmpty();
+            return (url.getProtocol().equals("http") || url.getProtocol().equals("https"))
+                && !url.getHost().isEmpty();
         } catch (Exception e) {
             return false;
         }
