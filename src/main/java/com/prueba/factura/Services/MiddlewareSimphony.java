@@ -55,6 +55,9 @@ public class MiddlewareSimphony implements CommandLineRunner {
     @Autowired
     private FacturaCounterService facturaCounterService;
 
+    @Autowired
+    private FacturaPendienteService facturaPendienteService;
+
     private final HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_2)
             .connectTimeout(Duration.ofSeconds(5))
@@ -363,10 +366,12 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 logger.info("Respuesta exitosa");
             } else {
                 logger.warn("Respuesta con estado: {}", response.statusCode());
+                facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code:" + response.statusCode());
             }
             System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());
         }catch(Exception e){
-            logger.error("Error al enviar la solicitud Http POST", e);
+            logger.error("Error al enviar la solicitud Http POST guardando en cola pendiente", e);
+            facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
         }
     }
 }
