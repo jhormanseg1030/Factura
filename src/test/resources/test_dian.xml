@@ -1,0 +1,625 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Requerimiento xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <InformacionAdicional>
+    <Campo id="1">
+      <Descripcion>Documento</Descripcion>
+      <Valor>NOTA DE CREDITO ELECTRONICA</Valor>
+    </Campo>
+    <Campo id="2">
+      <Descripcion>Direccion</Descripcion>
+      <Valor>FUNDACION SANTAFE 119 CON 7 TERRAZA - USAQUEN</Valor>
+    </Campo>
+    <Campo id="3">
+      <Descripcion>DireccionSucursal</Descripcion>
+      <Valor>SANTAFE 119 CON 7 TERRAZA - USAQUEN</Valor>
+    </Campo>
+    <Campo id="4">
+      <Descripcion>Telefono</Descripcion>
+      <Valor>3108118387</Valor>
+    </Campo>
+    <Campo id="5">
+      <Descripcion>Pais</Descripcion>
+      <Valor>Colombia</Valor>
+    </Campo>
+    <Campo id="6">
+      <Descripcion>CHECKNUMBER</Descripcion>
+      <Valor>26580</Valor>
+    </Campo>
+    <Campo id="7">
+      <Descripcion>HarmonyId</Descripcion>
+      <Valor>420691</Valor>
+    </Campo>
+    <Campo id="8">
+      <Descripcion>WsID</Descripcion>
+      <Valor>8731</Valor>
+    </Campo>
+    <Campo id="9">
+      <Descripcion>Timestamp</Descripcion>
+      <Valor>2026-08-21T15:13:13.7252192-05:00</Valor>
+    </Campo>
+    <Campo id="10">
+      <Descripcion>Id</Descripcion>
+      <Valor>HPL000014131</Valor>
+    </Campo>
+    <Campo id="11">
+      <Descripcion>Guid</Descripcion>
+      <Valor>fdffd998ff2e4bb39128362d410d27ff00008731</Valor>
+    </Campo>
+    <Campo id="12">
+      <Descripcion>RVC</Descripcion>
+      <Valor>RVC Dinner</Valor>
+    </Campo>
+    <Campo id="13">
+      <Descripcion>CAJERO</Descripcion>
+      <Valor>Admin Noche DSF</Valor>
+    </Campo>
+    <Campo id="14">
+      <Descripcion>ClaveTecnica</Descripcion>
+      <Valor>6d48f56768c9a2e6edcc3bb4e5827dfce96291ef545c9af12a998e6f3bfdd9c1</Valor>
+    </Campo>
+    <Campo id="15">
+      <Descripcion>Pin</Descripcion>
+      <Valor>20191</Valor>
+    </Campo>
+    <Campo id="16">
+      <Descripcion>Resolucion</Descripcion>
+      <Valor>18764106468802</Valor>
+    </Campo>
+    <Campo id="17">
+      <Descripcion>Fecha Resolucion</Descripcion>
+      <Valor>2026-02-27</Valor>
+    </Campo>
+    <Campo id="18">
+      <Descripcion>Fecha Inicio</Descripcion>
+      <Valor>2026-02-27</Valor>
+    </Campo>
+    <Campo id="19">
+      <Descripcion>Fecha Fin</Descripcion>
+      <Valor>2027-02-27</Valor>
+    </Campo>
+    <Campo id="20">
+      <Descripcion>Rango Inicio</Descripcion>
+      <Valor>SF691900</Valor>
+    </Campo>
+    <Campo id="21">
+      <Descripcion>Rango Fin</Descripcion>
+      <Valor>SF1000000</Valor>
+    </Campo>
+    <Campo id="22">
+      <Descripcion>SERVICIO</Descripcion>
+      <Valor>10315</Valor>
+    </Campo>
+    <Campo id="24">
+      <Descripcion>CalcularDescuentos</Descripcion>
+      <Valor>false</Valor>
+    </Campo>
+    <Campo id="25">
+      <Descripcion>ConsultarClienteBDD</Descripcion>
+      <Valor>true</Valor>
+    </Campo>
+    <Campo id="26">
+      <Descripcion>CalcularImpuestosGlobales</Descripcion>
+      <Valor>true</Valor>
+    </Campo>
+    <Campo id="27">
+      <Descripcion>CalcularTotales</Descripcion>
+      <Valor>true</Valor>
+    </Campo>
+    <Campo id="28">
+      <Descripcion>ConsConsolidarDetallesDecimales</Descripcion>
+      <Valor>0</Valor>
+    </Campo>
+    <Campo id="29">
+      <Descripcion>Descuento</Descripcion>
+      <Valor>0</Valor>
+    </Campo>
+    <Campo id="30">
+      <Descripcion>Mesa</Descripcion>
+      <Valor>1</Valor>
+    </Campo>
+    <Campo id="33">
+      <Descripcion>NombrePropiedad</Descripcion>
+      <Valor>DinerSantaFe</Valor>
+    </Campo>
+    <Campo id="34">
+      <Descripcion>CheckName</Descripcion>
+      <Valor />
+    </Campo>
+    <Campo id="36">
+      <Descripcion>FPTarjeta</Descripcion>
+      <Valor>121715</Valor>
+    </Campo>
+    <Campo>
+      <Descripcion>MensajeInformativo</Descripcion>
+    </Campo>
+  </InformacionAdicional>
+  <ConceptoEmision>Varios detalles:121715</ConceptoEmision>
+  <Codigo>91</Codigo>
+  <NumeroDocumento>SF1392</NumeroDocumento>
+  <Cufe>1f6f18b2130411cd167c92487c577e4b7f6797a080291d297a6a7372051135a5c9ef3312ff90e08d81adea12641ad01c</Cufe>
+  <FechaEmision>21/08/2026 15:13:10</FechaEmision>
+  <FechaEmisionPais>01/01/0001 00:00:00</FechaEmisionPais>
+  <FechaEmisionFormatoPais>2026-08-21T15:13:10</FechaEmisionFormatoPais>
+  <TasaCambioPrincipal>0</TasaCambioPrincipal>
+  <TasaCambioAlternativa>0</TasaCambioAlternativa>
+  <ValorMinimoPrincipal>0</ValorMinimoPrincipal>
+  <ValorMinimoAlternativo>0</ValorMinimoAlternativo>
+  <CondicionVenta>01</CondicionVenta>
+  <CondicionVentaCR>Contado</CondicionVentaCR>
+  <CodigoReferencia />
+  <TotalSinImpuestos>103148.00</TotalSinImpuestos>
+  <TotalConImpuestos>121714.84</TotalConImpuestos>
+  <ResumenComprobante>
+    <MontoTotalSujetoIva xsi:nil="true" />
+    <CodigoMoneda>COP</CodigoMoneda>
+    <TipoCambio>0</TipoCambio>
+    <TotalDescuentos>0</TotalDescuentos>
+    <TotalVenta>111400</TotalVenta>
+    <TotalImpuesto>8251.8400</TotalImpuesto>
+    <TotalImpAsumEmisorFabrica xsi:nil="true" />
+    <TotalComprobante>121714.84</TotalComprobante>
+    <TotalMercNoSujeta xsi:nil="true" />
+    <TotalServNoSujeto xsi:nil="true" />
+  </ResumenComprobante>
+  <Retencion />
+  <DetallesProceso />
+  <CodigoPagoLocalizacionExtranjera xsi:nil="true" />
+  <CodigoTipoRegimenFiscalExterior xsi:nil="true" />
+  <CodigoPaisEfectuaPago xsi:nil="true" />
+  <AplicaConvenioDobleTributacion>false</AplicaConvenioDobleTributacion>
+  <EsPagoExteriorSujetoRetencionNormaLegal>false</EsPagoExteriorSujetoRetencionNormaLegal>
+  <Impuestos>
+    <Impuesto>
+      <CodigoImpuesto>04</CodigoImpuesto>
+      <Impuesto>INC 8%</Impuesto>
+      <CodigoPorcentaje>08</CodigoPorcentaje>
+      <Porcentaje>8.000000</Porcentaje>
+      <BaseImponible>103148.0000</BaseImponible>
+      <Valor>8251.8400</Valor>
+      <UnidadMedida xsi:nil="true" />
+      <FechaPago xsi:nil="true" />
+      <ValorImpuestoRenta xsi:nil="true" />
+      <AnioEjercicioFiscal xsi:nil="true" />
+      <Exonerado>false</Exonerado>
+    </Impuesto>
+  </Impuestos>
+  <ValidarFP>true</ValidarFP>
+  <Pagos>
+    <Pago>
+      <FormaPagoColombia>Tarjeta</FormaPagoColombia>
+      <CodigoFormaPago>48</CodigoFormaPago>
+      <Total>121715</Total>
+      <Plazo>0</Plazo>
+      <Tip>0</Tip>
+      <InformacionAdicional />
+    </Pago>
+  </Pagos>
+  <NoProcesable>false</NoProcesable>
+  <EstadoComprobante>Autorizado</EstadoComprobante>
+  <ImprimeComprobante>true</ImprimeComprobante>
+  <ClaveAcceso>1f6f18b2130411cd167c92487c577e4b7f6797a080291d297a6a7372051135a5c9ef3312ff90e08d81adea12641ad01c</ClaveAcceso>
+  <InformacionCUFE>https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=1f6f18b2130411cd167c92487c577e4b7f6797a080291d297a6a7372051135a5c9ef3312ff90e08d81adea12641ad01c</InformacionCUFE>
+  <Propina>10315</Propina>
+  <NumeroAutorizacion>1f6f18b2130411cd167c92487c577e4b7f6797a080291d297a6a7372051135a5c9ef3312ff90e08d81adea12641ad01c</NumeroAutorizacion>
+  <Pais>Colombia</Pais>
+  <FechaAutorizacion>21/08/2026 15:13:43</FechaAutorizacion>
+  <FechaIN>21/08/2026 03:13:40</FechaIN>
+  <IdRequerimiento>263131232548089041</IdRequerimiento>
+  <IdReqAsociado>0</IdReqAsociado>
+  <ReprocesoManual>false</ReprocesoManual>
+  <CodigoEmisor>11</CodigoEmisor>
+  <RucEmisor>8605108638</RucEmisor>
+  <RazonSocialEmisor>Inverleoka S.A.S</RazonSocialEmisor>
+  <ValorFirmaElectronica>BkzDYuOwa6+bp3NYiTjYxLAPdADKrtGNfB0HSXWZcfr5lY9o60Mxaib1ccWOV+rHIF4ajaS6by2A2cW/1vMgKZJgnL1FzQbhRa1oYzTl5qb6Kgm25kET3RinK0YgFfxItWGtYtcztxrdBYJo8fGXB7q2EbyxIIaTNQWvorZVo2wN0IGE5rzPGHstErXjvWJOlcFuj89UK5HO1ACzcW/LcwGt+L80+2+Iqt/IT0IC12+ow0ySd/5XmvRIVnyBqsqsLVcTPV0hkfxypXxPmtX5jIkWEvX38Ef3lhaRGo1ro5VRujKLVhBMFOYE75RT3i+Y7crU9VEmZ+psr/0dZQkMWQ==</ValorFirmaElectronica>
+  <Establecimiento>001</Establecimiento>
+  <Punto>SF</Punto>
+  <Moneda>COP</Moneda>
+  <Ambiente>1</Ambiente>
+  <Version>Version21</Version>
+  <TotalTributos>0</TotalTributos>
+  <Cliente>
+    <IdCliente>300610</IdCliente>
+    <RazonSocial>Consumidor final</RazonSocial>
+    <Direccion />
+    <TipoIdentificacion>13</TipoIdentificacion>
+    <NumeroIdentificacion>222222222222</NumeroIdentificacion>
+    <TipoCliente />
+    <DigitoVerificador />
+    <CodigoPais>CO</CodigoPais>
+    <Ubicacion />
+    <email />
+    <NombreComercial xsi:nil="true" />
+    <NumeroContribuyenteEspecial xsi:nil="true" />
+    <ContabilidadObligada xsi:nil="true" />
+    <CodigoTipoSujetoRetenido xsi:nil="true" />
+    <EsParteRelacionalConEmisor>false</EsParteRelacionalConEmisor>
+    <Telefono />
+    <CodigoPaisTelefono>0</CodigoPaisTelefono>
+  </Cliente>
+  <Transporte />
+  <TipoEnvio />
+  <DocumentosAsociados>
+    <Documento id="1">
+      <Codigo>01</Codigo>
+      <NumeroDocumento>SF716596</NumeroDocumento>
+      <Cufe>6178a7d05acd58b8195c94fe65826c8b734996c229bbb9142a8370f71663f87b53533c05c39452a8eeb73a2905611a5d</Cufe>
+      <FechaEmision>21/08/2026</FechaEmision>
+      <TasaCambioPrincipal>0</TasaCambioPrincipal>
+      <TasaCambioAlternativa>0</TasaCambioAlternativa>
+      <ValorMinimoPrincipal>0</ValorMinimoPrincipal>
+      <ValorMinimoAlternativo>0</ValorMinimoAlternativo>
+      <CondicionVenta />
+      <CodigoReferencia />
+      <TotalSinImpuestos>0</TotalSinImpuestos>
+      <TotalConImpuestos>0</TotalConImpuestos>
+      <DetallesProceso />
+      <CodigoPagoLocalizacionExtranjera xsi:nil="true" />
+      <CodigoTipoRegimenFiscalExterior xsi:nil="true" />
+      <CodigoPaisEfectuaPago xsi:nil="true" />
+      <AplicaConvenioDobleTributacion>false</AplicaConvenioDobleTributacion>
+      <EsPagoExteriorSujetoRetencionNormaLegal>false</EsPagoExteriorSujetoRetencionNormaLegal>
+      <ValidarFP>true</ValidarFP>
+      <Motivos>
+        <Motivo id="1">
+          <Descripcion>Modificacion Comprobante</Descripcion>
+          <Valor>CROISSANT</Valor>
+        </Motivo>
+      </Motivos>
+    </Documento>
+  </DocumentosAsociados>
+  <Detalles>
+    <Detalle id="1">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>3</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>5501</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>21111</SubTotal>
+      <Total>22800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>107358</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>Parfait</Descripcion>
+        <ValorUnitario>21111</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>21111</BaseImponible>
+          <Valor>1688.88</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="2">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>3</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>5001</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>10926</SubTotal>
+      <Total>11800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>102630</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>JgNaranja</Descripcion>
+        <ValorUnitario>10926</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>10926</BaseImponible>
+          <Valor>874.08</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="3">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>1</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>1702</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>22963</SubTotal>
+      <Total>24800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>102567</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>HvTocineta</Descripcion>
+        <ValorUnitario>22963</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>22963</BaseImponible>
+          <Valor>1837.04</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="4">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>1</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>2211</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>9074</SubTotal>
+      <Total>9800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>100590</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>Croissant</Descripcion>
+        <ValorUnitario>9074</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>9074</BaseImponible>
+          <Valor>725.92</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="5">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>3</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>5003</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>11852</SubTotal>
+      <Total>12800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>108046</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>CapuccinoAlmendras</Descripcion>
+        <ValorUnitario>11852</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>11852</BaseImponible>
+          <Valor>948.16</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="6">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>1</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>2211</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>10000</SubTotal>
+      <Total>10800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>104747</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>MuffinAgraz</Descripcion>
+        <ValorUnitario>10000</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>10000</BaseImponible>
+          <Valor>800.00</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="7">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>3</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>5000</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>9074</SubTotal>
+      <Total>9800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>200644</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>AgManan600Gas</Descripcion>
+        <ValorUnitario>9074</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>9074</BaseImponible>
+          <Valor>725.92</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+    <Detalle id="8">
+      <InformacionAdicional>
+        <Campo id="1">
+          <Descripcion>MAJOR GROUP</Descripcion>
+          <Valor>3</Valor>
+        </Campo>
+        <Campo id="2">
+          <Descripcion>FAMILY GROUP</Descripcion>
+          <Valor>5003</Valor>
+        </Campo>
+      </InformacionAdicional>
+      <Cantidad>1</Cantidad>
+      <Descuento>0</Descuento>
+      <NaturalezaDescuento />
+      <SubTotal>8148</SubTotal>
+      <Total>8800</Total>
+      <Tipo>Mercaderia</Tipo>
+      <Exonerar>false</Exonerar>
+      <Producto>
+        <TipoProducto />
+        <Codigo>100614</Codigo>
+        <CodigoAuxiliar />
+        <Descripcion>EspLungo</Descripcion>
+        <ValorUnitario>8148</ValorUnitario>
+        <CineCenter>false</CineCenter>
+      </Producto>
+      <Impuestos>
+        <Impuesto>
+          <CodigoImpuesto>04</CodigoImpuesto>
+          <Impuesto>INC 8%</Impuesto>
+          <CodigoPorcentaje>08</CodigoPorcentaje>
+          <Porcentaje>8.000000</Porcentaje>
+          <BaseImponible>8148</BaseImponible>
+          <Valor>651.84</Valor>
+          <UnidadMedida xsi:nil="true" />
+          <FechaPago xsi:nil="true" />
+          <ValorImpuestoRenta xsi:nil="true" />
+          <AnioEjercicioFiscal xsi:nil="true" />
+          <Exonerado>false</Exonerado>
+        </Impuesto>
+      </Impuestos>
+    </Detalle>
+  </Detalles>
+  <DetalleExportacion />
+  <Canal>Servicios</Canal>
+  <TotalIsc>0</TotalIsc>
+  <TotalIgv>0</TotalIgv>
+  <Gravadas>0</Gravadas>
+  <TotalDetraccion>0</TotalDetraccion>
+  <Procesar>false</Procesar>
+  <Actividad />
+  <ResolucionFiscal>
+    <Resolucion>18764106468802</Resolucion>
+    <FechaResolucion>2026-02-27T00:00:00</FechaResolucion>
+    <Prefijo>SF</Prefijo>
+    <SecuenciaInicio>1.0</SecuenciaInicio>
+    <SecuenciaFin>1000000.0</SecuenciaFin>
+    <FechaInicio>2026-02-27T00:00:00</FechaInicio>
+    <FechaFin>2027-02-27T00:00:00</FechaFin>
+  </ResolucionFiscal>
+</Requerimiento>
