@@ -78,12 +78,13 @@ class MiddlewareSimphonyTest {
                 String xmlContenido = """
                         <Root>
                             <Check CheckNum="11496" />
+                            <OraPayloadEntityField field="CheckSubtotal" value="100.00"/>
                             <OraPayloadEntityField field="TaxRates" type="List">
                                 <GenericParameterList>
                                     <OraPayloadEntityFieldGenericParameter field="DE_SATCOM_CodigoImpuesto" value="04"/>
                                     <OraPayloadEntityFieldGenericParameter field="DE_SATCOM_NombreImpuesto" value="INC 8%"/>
                                     <OraPayloadEntityFieldGenericParameter field="DE_SATCOM_Numero_Impuestos" value="1"/>
-                                    <OraPayloadEntityFieldGenericParameter field="DE_SATCOM_Porc_Impuestos" value="8"/>
+                                    <OraPayloadEntityFieldGenericParameter field="DE_SATCOM_Porc_Impuestos" value="8,00"/>
                                 </GenericParameterList>
                             </OraPayloadEntityField>
                         </Root>
@@ -97,7 +98,9 @@ class MiddlewareSimphonyTest {
 
                 assertTrue(factura.get("impuestos_json").contains("\"codigo_impuesto\":\"04\""));
                 assertTrue(factura.get("impuestos_json").contains("\"nombre_impuesto\":\"INC 8%\""));
-                assertTrue(factura.get("impuestos_json").contains("\"porcentaje_impuesto\":\"8\""));
+                assertTrue(factura.get("impuestos_json").contains("\"porcentaje_impuesto\":\"8.00\""));
+                assertTrue(factura.get("impuestos_json").contains("\"base_imponible\":\"92.59\""));
+                assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"7.41\""));
 
                 Files.deleteIfExists(temporal);
         }
