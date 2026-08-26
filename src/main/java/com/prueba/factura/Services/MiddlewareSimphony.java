@@ -18,9 +18,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -35,7 +38,9 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 
 @Service
 public class MiddlewareSimphony implements CommandLineRunner {
@@ -52,8 +57,17 @@ public class MiddlewareSimphony implements CommandLineRunner {
     @Value("${app.webhook.url}")
     private String apiUrl;
 
+    @Value("${app.dian.ambiente:2}")
+    private String tipoAmbiente;
+
+    @Value("${app.cufe.registry.file:facturas_cufes.json}")
+    private String cufeRegistryFile;
+
     @Autowired
     private FacturaCounterService facturaCounterService;
+
+    @Autowired
+    private FacturaPendienteService facturaPendienteService;
 
     private final HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_2)
@@ -138,6 +152,78 @@ public class MiddlewareSimphony implements CommandLineRunner {
         return productos;
     }
 
+    private static List<Map<String, String>> extraerImpuestos(Document doc, String subtotalFacturaStr){
+        List<Map<String, String>> listaImpuestos = new ArrayList<>();
+        Set<String> impuestosProcesados = new HashSet<>();
+
+        double subtotalGeneral = 0.0;
+        try{
+            if(subtotalFacturaStr != null && !subtotalFacturaStr.isBlank()){
+                subtotalGeneral = Double.parseDouble(subtotalFacturaStr.replace(',', '.'));
+            }
+        } catch(NumberFormatException e){
+            subtotalGeneral = 0.0;
+        }
+        NodeList genericList = doc.getElementsByTagName("GenericParameterList");
+
+        for(int i = 0; i < genericList.getLength(); i++){
+            Element listElement = (Element) genericList.item(i);
+            NodeList fields = listElement.getElementsByTagName("OraPayloadEntityFieldGenericParameter");
+            Map<String, String> rawTax =new HashMap<>();
+
+            for(int j = 0; j < fields.getLength(); j++){
+                Element field = (Element) fields.item(j);
+                String name = field.getAttribute("field");
+                String value = field.getAttribute("value");
+                if(name != null && !name.isBlank()){
+                    rawTax.put(name, value == null ? "" : value);
+                }
+            }
+
+            if(rawTax.containsKey("NombreImpuesto") || rawTax.containsKey("CodigoImpuesto") || rawTax.containsKey("Porc_Impuesto") 
+                || rawTax.containsKey("DE_SATCOM_NombreImpuesto") || rawTax.containsKey("DE_SATCOM_CodigoImpuesto")
+                || rawTax.containsKey("DE_SATCOM_Porc_Impuestos")){
+
+                    String codigo = rawTax.getOrDefault("DE_SATCOM_CodigoImpuesto", rawTax.getOrDefault("CodigoImpuesto", ""));
+                    String nombre = rawTax.getOrDefault("DE_SATCOM_NombreImpuesto", rawTax.getOrDefault("NombreImpuesto", ""));
+                    String numero = rawTax.getOrDefault("DE_SATCOM_Numero_Impuestos", rawTax.getOrDefault("Numero_Impuestos", ""));
+                    String porcentajeStr = rawTax.getOrDefault("DE_SATCOM_Porc_Impuestos",
+                        rawTax.getOrDefault("Porc_Impuestos", rawTax.getOrDefault("Porc_Impuesto", "0.00")));
+
+                    String claveUnica = codigo + "_" + porcentajeStr;
+
+                    if(!impuestosProcesados.contains(claveUnica) && (!codigo.isEmpty() || !nombre.isEmpty())){
+                        impuestosProcesados.add(claveUnica);
+
+                        double porcentaje = 0.0;
+                        try{
+                            porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
+                        } catch(NumberFormatException e){
+                            porcentaje = 0.0;
+                        }
+
+                        double baseImponible = 0.0;
+                        double montoImpuesto = 0.0;
+
+                        if(porcentaje > 0 && subtotalGeneral > 0){
+                            baseImponible = subtotalGeneral / (1.0 +(porcentaje / 100.0));
+                            montoImpuesto = subtotalGeneral - baseImponible;
+                    }
+                    Map<String, String> impuestoLimpio = new LinkedHashMap<>();
+                    impuestoLimpio.put("codigo_impuesto", codigo);
+                    impuestoLimpio.put("nombre_impuesto", nombre);
+                    impuestoLimpio.put("numero_impuesto", numero);
+                    impuestoLimpio.put("porcentaje_impuesto", String.format(Locale.US, "%.2f", porcentaje));
+                    impuestoLimpio.put("base_imponible", String.format(Locale.US, "%.2f", baseImponible));
+                    impuestoLimpio.put("monto_impuesto", String.format(Locale.US, "%.2f", montoImpuesto));
+
+                    listaImpuestos.add(impuestoLimpio);
+               }
+            }
+        }
+        return listaImpuestos;
+    }
+
     private static String generarJsonItems(List<Map<String, String>> productos) {
         StringBuilder json = new StringBuilder();
         json.append("[");
@@ -194,22 +280,12 @@ public class MiddlewareSimphony implements CommandLineRunner {
             doc.getDocumentElement().normalize();
             Map<String, String> result = new HashMap<>();
 
-            List<Map<String, String>> productos = extraerProductos(doc);
-
             Element checkElement = (Element) doc.getElementsByTagName("Check").item(0);
             result.put("numero_ticket", checkElement.getAttribute("CheckNum"));
             result.put("check_id", checkElement.getAttribute("Id"));
             result.put("harmony_id", checkElement.getAttribute("HarmonyId"));
             result.put("workstation_id", checkElement.getAttribute("WsID"));
             result.put("fecha_hora", checkElement.getAttribute("Timestamp"));
-
-            if (!productos.isEmpty()) {
-                Map<String, String> primerProducto = productos.get(0);
-                result.put("producto", primerProducto.getOrDefault("Name", ""));
-                result.put("cantidad", primerProducto.getOrDefault("SalesCount", ""));
-                result.put("precio_unitario", primerProducto.getOrDefault("UnitPrice", ""));
-                result.put("subtotal", primerProducto.getOrDefault("Total", primerProducto.getOrDefault("UnitPrice", "")));
-            }
 
             NodeList fieldList = doc.getElementsByTagName("OraPayloadEntityField");
             for (int i = 0; i < fieldList.getLength(); i++) {
@@ -249,6 +325,46 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 if ("Guid".equals(name)) {
                     result.putIfAbsent("guid_transaccion", value == null ? "N/A" : value);
                 }
+                if ("Resolucion".equals(name)){
+                    result.putIfAbsent("Resolucion", value == null ? "" : value);
+                }
+                if ("ResolucionIni".equals(name)){
+                    result.putIfAbsent("ResolucionIni", value == null ? "" : value);
+                }
+                if ("ResolucionFin".equals(name)){
+                    result.putIfAbsent("ResolucionFin", value == null ? "": value);
+                }
+                if ("FechaResolucion".equals(name)){
+                    result.putIfAbsent("FechaResolucion", value == null ? "" : value);
+                }
+                if("RucEmisor".equals(name)){
+                    result.putIfAbsent("RucEmisor", value == null ? "": value);  
+                }
+                if("ClaveTecnica".equals(name)){
+                    result.putIfAbsent("ClaveTecnica", value == null ? "": value);
+                }
+                if("RangoIni".equals(name)){
+                    result.putIfAbsent("RangoIni", value == null ? "": value);
+                }
+                if("RangoFin".equals(name)){
+                    result.putIfAbsent("RangoFin", value == null ? "": value);
+                }
+            }
+
+            List<Map<String, String>> productos = extraerProductos(doc);
+
+            if (!productos.isEmpty()) {
+                Map<String, String> primerProducto = productos.get(0);
+                result.putIfAbsent("producto", primerProducto.getOrDefault("Name", ""));
+                result.putIfAbsent("cantidad", primerProducto.getOrDefault("SalesCount", ""));
+                result.putIfAbsent("precio_unitario", primerProducto.getOrDefault("UnitPrice", ""));
+                result.putIfAbsent("subtotal", primerProducto.getOrDefault("Total", ""));
+            }
+
+            List<Map<String, String>> impuestos = extraerImpuestos(doc, result.getOrDefault("subtotal", "0.00"));
+            double totalImpuestos = 0.0;
+            for (Map<String, String> impuesto : impuestos) {
+                totalImpuestos += Double.parseDouble(impuesto.getOrDefault("monto_impuesto", "0.00"));
             }
 
             result.putIfAbsent("genera_documento", "FALSE");
@@ -259,11 +375,15 @@ public class MiddlewareSimphony implements CommandLineRunner {
             result.putIfAbsent("cantidad", "");
             result.putIfAbsent("precio_unitario", "");
             result.putIfAbsent("subtotal", "");
+            result.put("total_impuestos", String.format(Locale.US, "%.2f", totalImpuestos));
             result.putIfAbsent("propina", "");
             result.putIfAbsent("total", "");
             result.putIfAbsent("restaurante", "");
             result.putIfAbsent("workstation_nombre", "");
             result.putIfAbsent("empleado", "");
+            result.putIfAbsent("impuestos_json", null);
+            ObjectMapper mapper = new ObjectMapper();
+            result.put("impuestos_json", mapper.writeValueAsString(impuestos));
             result.put("items_json", generarJsonItems(productos));
 
             return result;
@@ -274,6 +394,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
     public void procesarXML(File xmlFile){
         try{
+
             Map<String, String> datos = extraerDatosFactura(xmlFile);
 
             String checkNum = datos.getOrDefault("numero_ticket", "");
@@ -286,6 +407,31 @@ public class MiddlewareSimphony implements CommandLineRunner {
             String codigoFiscal = datos.getOrDefault("codigo_fiscal", "N/A");
             String guid = datos.getOrDefault("guid_transaccion", "N/A");
 
+            double subtotalNum = Double.parseDouble(datos.getOrDefault("subtotal", "0.00").replace(',', '.'));
+            double totalNum = Double.parseDouble(datos.getOrDefault("total", "0.00").replace(',', '.'));
+
+            double ivaNum = 0.00;
+            double incNum = 0.00;
+            double icaNum = 0.00;
+
+            String claveTecnicaXml = datos.getOrDefault("ClaveTecnica", "");
+            String nitEmisor = datos.getOrDefault("RucEmisor", "8605108638");
+            String prefijoFac = datos.getOrDefault("RangoIni", "SETT").replaceAll("[0-9]", "");
+
+            String identificadorFactura = construirIdentificadorFactura(datos);
+            Map<String, String> registroExistente = leerRegistroCufe(identificadorFactura);
+            String numeroFacturaCompleto = registroExistente == null
+                ? prefijoFac + facturaCounterService.obtenerSiguienteNumero()
+                : registroExistente.get("numero_factura_completo");
+            String fechaFac = "2026-08-23";
+            String horaFac = "22:14:11-05:00";
+            String numAdquiriente = "222222222";
+
+            String cufeGenerado = registroExistente == null
+                ? CufeServices.generarCufe(numeroFacturaCompleto, fechaFac, horaFac, subtotalNum, "01", ivaNum,
+                    "04", incNum, "00", icaNum, totalNum, nitEmisor, numAdquiriente, claveTecnicaXml, tipoAmbiente)
+                : registroExistente.get("cufe");
+
             System.out.println("Datos Extraidos del XML:");
             System.out.println("• Ticket (CheckNum):" + checkNum);
             System.out.println("• Estación (WsID):" + wsId);
@@ -294,22 +440,24 @@ public class MiddlewareSimphony implements CommandLineRunner {
             System.out.println("• Código Fiscal: "+ codigoFiscal);
             System.out.println("• GUID Transaccion: "+ guid);
             System.out.println("• Genera Documento: "+ generaDoc);
-            System.out.println("• Producto: "+ datos.getOrDefault("producto", "N/A"));
-            System.out.println("• Cantidad: "+ datos.getOrDefault("cantidad", "N/A"));
-            System.out.println("• Precio Unitario: "+ datos.getOrDefault("precio_unitario", "N/A"));
-            System.out.println("• Subtotal: "+ datos.getOrDefault("subtotal", "N/A"));
+            System.out.println("• Resolucion: "+ datos.getOrDefault("Resolucion", "N/A"));
+            System.out.println("• ResolucionIni: "+ datos.getOrDefault("ResolucionIni", "N/A"));
+            System.out.println("• ResolucionFin: "+ datos.getOrDefault("ResolucionFin", "N/A"));
+            System.out.println("• FechaResolucion: " + datos.getOrDefault("FechaResolucion", "N/A"));
             System.out.println("• Propina: "+ datos.getOrDefault("propina", "N/A"));
             System.out.println("• Total: "+ datos.getOrDefault("total", "N/A"));
             System.out.println("• Restaurante: "+ datos.getOrDefault("restaurante", "N/A"));
             System.out.println("• Workstation: "+ datos.getOrDefault("workstation_nombre", "N/A"));
             System.out.println("• Empleado: "+ datos.getOrDefault("empleado", "N/A"));
+            System.out.println("• Impuestos: "+ datos.getOrDefault("impuestos_json", "[]"));
             System.out.println("• Items: "+ datos.getOrDefault("items_json", "[]"));
+            System.out.println("• CUFE Generado: "+ cufeGenerado);
 
             if("TRUE".equalsIgnoreCase(generaDoc)){
                 Map<String, Object> jsonMap = new LinkedHashMap<>();
-                jsonMap.put("numero_factura", facturaCounterService.obtenerSiguienteNumero());
+                jsonMap.put("numero_factura", numeroFacturaCompleto);
                 jsonMap.put("fecha_procesamiento", LocalDateTime.now().toString());
-                jsonMap.put("numero_ticket", checkNum);
+                jsonMap.put("numero_ticket", datos.get("numero_ticket"));
                 jsonMap.put("check_id", checkId);
                 jsonMap.put("harmony_id", harmonyId);
                 jsonMap.put("caja_wsid", wsId);
@@ -317,19 +465,23 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 jsonMap.put("condicion_venta", condicionVenta);
                 jsonMap.put("codigo_fiscal", codigoFiscal);
                 jsonMap.put("guid_transaccion", guid);
-                jsonMap.put("producto", datos.getOrDefault("producto", "N/A"));
-                jsonMap.put("cantidad", datos.getOrDefault("cantidad", "N/A"));
-                jsonMap.put("precio_unitario", datos.getOrDefault("precio_unitario", "N/A"));
-                jsonMap.put("subtotal", datos.getOrDefault("subtotal", "N/A"));
+                jsonMap.put("tipo_ambiente", tipoAmbiente);
+                jsonMap.put("numero_factura_completo", numeroFacturaCompleto);
+                jsonMap.put("clave_tecnica_xml", claveTecnicaXml);
+                jsonMap.put("Resolucion", datos.getOrDefault("Resolucion", "N/A"));
+                jsonMap.put("ResolucionIni", datos.getOrDefault("ResolucionIni", "N/A"));
+                jsonMap.put("ResolucionFin", datos.getOrDefault("ResolucionFin", "N/A"));
+                jsonMap.put("FechaResolucion", datos.getOrDefault("FechaResolucion", "N/A"));
                 jsonMap.put("propina", datos.getOrDefault("propina", "N/A"));
                 jsonMap.put("total", datos.getOrDefault("total", "N/A"));
                 jsonMap.put("restaurante", datos.getOrDefault("restaurante", "N/A"));
                 jsonMap.put("workstation", datos.getOrDefault("workstation_nombre", "N/A"));
                 jsonMap.put("empleado", datos.getOrDefault("empleado", "N/A"));
-                jsonMap.put("items", datos.getOrDefault("items_json", "[]"));
-                
+                jsonMap.put("impuestos", objectMapper.readTree(datos.getOrDefault("impuestos_json", "[]")));
+                jsonMap.put("items", objectMapper.readTree(datos.getOrDefault("items_json", "[]")));
+                jsonMap.put("cufe", cufeGenerado);
                 String jsonPayload = objectMapper.writeValueAsString(jsonMap);
-
+                guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
                 enviarHttpPOST(jsonPayload);
             } else {
                 System.out.println("La factura no requiere procesamiento de documento fiscal");
@@ -343,6 +495,56 @@ public class MiddlewareSimphony implements CommandLineRunner {
         }catch(Exception e){
             System.err.println("ERROR procesando el archivo xml:" + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    private String construirIdentificadorFactura(Map<String, String> datos) {
+        String guid = datos.getOrDefault("guid_transaccion", "");
+        if (!guid.isBlank() && !"N/A".equalsIgnoreCase(guid)) {
+            return "guid:" + guid;
+        }
+
+        String checkId = datos.getOrDefault("check_id", "");
+        if (!checkId.isBlank()) {
+            return "check_id:" + checkId;
+        }
+
+        return "ticket:" + datos.getOrDefault("numero_ticket", "")
+            + "|fecha:" + datos.getOrDefault("fecha_hora", "");
+    }
+
+    private synchronized Map<String, String> leerRegistroCufe(String identificador) {
+        Path path = Paths.get(cufeRegistryFile);
+        if (!Files.exists(path)) {
+            return null;
+        }
+
+        try {
+            Map<String, Map<String, String>> registros = objectMapper.readValue(
+                path.toFile(), new TypeReference<Map<String, Map<String, String>>>() {});
+            return registros.get(identificador);
+        } catch (Exception e) {
+            logger.warn("No se pudo leer el registro de CUFEs: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private synchronized void guardarRegistroCufe(String identificador, String numeroFactura, String cufe) {
+        try {
+            Path path = Paths.get(cufeRegistryFile);
+            Map<String, Map<String, String>> registros = new LinkedHashMap<>();
+            if (Files.exists(path)) {
+                registros = objectMapper.readValue(
+                    path.toFile(), new TypeReference<Map<String, Map<String, String>>>() {});
+            }
+
+            Map<String, String> registro = new LinkedHashMap<>();
+            registro.put("numero_factura_completo", numeroFactura);
+            registro.put("cufe", cufe);
+            registros.put(identificador, registro);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), registros);
+        } catch (Exception e) {
+            logger.error("No se pudo guardar el registro de CUFE", e);
         }
     }
 
@@ -363,10 +565,12 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 logger.info("Respuesta exitosa");
             } else {
                 logger.warn("Respuesta con estado: {}", response.statusCode());
+                facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code:" + response.statusCode());
             }
             System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());
         }catch(Exception e){
-            logger.error("Error al enviar la solicitud Http POST", e);
+            logger.error("Error al enviar la solicitud Http POST guardando en cola pendiente", e);
+            facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
         }
     }
 }
