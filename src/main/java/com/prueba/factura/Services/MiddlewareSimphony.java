@@ -18,12 +18,10 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -153,77 +151,81 @@ public class MiddlewareSimphony implements CommandLineRunner {
     }
 
     private static List<Map<String, String>> extraerImpuestos(Document doc, String subtotalFacturaStr){
-        List<Map<String, String>> listaImpuestos = new ArrayList<>();
-        Set<String> impuestosProcesados = new HashSet<>();
+        
+        Map<String, Map<String, Double>> mapaAgrupado = new HashMap<>();
+        Map<String, String> nombreImpuestos = new HashMap<>();
 
-        double subtotalGeneral = 0.0;
-        try{
-            if(subtotalFacturaStr != null && !subtotalFacturaStr.isBlank()){
-                subtotalGeneral = Double.parseDouble(subtotalFacturaStr.replace(',', '.'));
-            }
-        } catch(NumberFormatException e){
-            subtotalGeneral = 0.0;
-        }
-        NodeList genericList = doc.getElementsByTagName("GenericParameterList");
+        NodeList menuItems = doc.getElementsByTagName("OraPayloadEntityMI");
 
-        for(int i = 0; i < genericList.getLength(); i++){
-            Element listElement = (Element) genericList.item(i);
-            NodeList fields = listElement.getElementsByTagName("OraPayloadEntityFieldGenericParameter");
-            Map<String, String> rawTax =new HashMap<>();
+        for(int i = 0; i < menuItems.getLength(); i++){
+            Element itemsElement = (Element) menuItems.item(i);
+            NodeList fields = itemsElement.getElementsByTagName("OraPayloadEntityField");
 
+            Map<String, String> itemFields = new HashMap<>();
             for(int j = 0; j < fields.getLength(); j++){
                 Element field = (Element) fields.item(j);
                 String name = field.getAttribute("field");
                 String value = field.getAttribute("value");
+
                 if(name != null && !name.isBlank()){
-                    rawTax.put(name, value == null ? "" : value);
+                    itemFields.put(name, value == null ? "": value);
                 }
             }
 
-            if(rawTax.containsKey("NombreImpuesto") || rawTax.containsKey("CodigoImpuesto") || rawTax.containsKey("Porc_Impuesto") 
-                || rawTax.containsKey("DE_SATCOM_NombreImpuesto") || rawTax.containsKey("DE_SATCOM_CodigoImpuesto")
-                || rawTax.containsKey("DE_SATCOM_Porc_Impuestos")){
+            String codigo = itemFields.getOrDefault("DE_SATCOM_CodigoImpuesto", "");
+            String porcentajeStr = itemFields.getOrDefault("DE_SATCOM_Porc_Impuestos", "0.00");
+            String nombre = itemFields.getOrDefault("DE_SATCOM_NombreImpuesto", "");
+            String totalItemStr = itemFields.getOrDefault("Total","0.00" );
 
-                    String codigo = rawTax.getOrDefault("DE_SATCOM_CodigoImpuesto", rawTax.getOrDefault("CodigoImpuesto", ""));
-                    String nombre = rawTax.getOrDefault("DE_SATCOM_NombreImpuesto", rawTax.getOrDefault("NombreImpuesto", ""));
-                    String numero = rawTax.getOrDefault("DE_SATCOM_Numero_Impuestos", rawTax.getOrDefault("Numero_Impuestos", ""));
-                    String porcentajeStr = rawTax.getOrDefault("DE_SATCOM_Porc_Impuestos",
-                        rawTax.getOrDefault("Porc_Impuestos", rawTax.getOrDefault("Porc_Impuesto", "0.00")));
-
-                    String claveUnica = codigo + "_" + porcentajeStr;
-
-                    if(!impuestosProcesados.contains(claveUnica) && (!codigo.isEmpty() || !nombre.isEmpty())){
-                        impuestosProcesados.add(claveUnica);
-
-                        double porcentaje = 0.0;
-                        try{
-                            porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
-                        } catch(NumberFormatException e){
-                            porcentaje = 0.0;
-                        }
-
-                        double baseImponible = 0.0;
-                        double montoImpuesto = 0.0;
-
-                        if(porcentaje > 0 && subtotalGeneral > 0){
-                            baseImponible = subtotalGeneral / (1.0 +(porcentaje / 100.0));
-                            montoImpuesto = subtotalGeneral - baseImponible;
-                    }
-                    Map<String, String> impuestoLimpio = new LinkedHashMap<>();
-                    impuestoLimpio.put("codigo_impuesto", codigo);
-                    impuestoLimpio.put("nombre_impuesto", nombre);
-                    impuestoLimpio.put("numero_impuesto", numero);
-                    impuestoLimpio.put("porcentaje_impuesto", String.format(Locale.US, "%.2f", porcentaje));
-                    impuestoLimpio.put("base_imponible", String.format(Locale.US, "%.2f", baseImponible));
-                    impuestoLimpio.put("monto_impuesto", String.format(Locale.US, "%.2f", montoImpuesto));
-
-                    listaImpuestos.add(impuestoLimpio);
-               }
+            if(codigo.isEmpty() || totalItemStr.equals("0.00")){
+                continue;
             }
-        }
-        return listaImpuestos;
-    }
 
+            double porcentaje = 0.0;
+            double total = 0.0;
+
+            try{
+                porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
+                total = Double.parseDouble(totalItemStr.replace(',', '.'));
+            } catch (NumberFormatException e) {
+                continue;
+            }
+
+            double baseImponibleItem = total /(1.0 + (porcentaje / 100.0));
+            double montoImpuestoItem = total - baseImponibleItem;
+
+            String claveUnica = codigo + "_" + porcentajeStr;
+            nombreImpuestos.putIfAbsent(claveUnica, nombre);
+
+            mapaAgrupado.putIfAbsent(claveUnica, new HashMap<>());
+
+            Map<String, Double> valoresActuales = mapaAgrupado.get(claveUnica);
+            mapaAgrupado.get(claveUnica).put("base", valoresActuales.getOrDefault("base", 0.0) + baseImponibleItem);
+            mapaAgrupado.get(claveUnica).put("monto", valoresActuales.getOrDefault("monto", 0.0) + montoImpuestoItem);
+            mapaAgrupado.get(claveUnica).put("porcentaje", porcentaje);
+        }
+        List<Map<String, String>> listaImpuestosLimpia = new ArrayList<>();
+        int contador = 1;
+
+        for(Map.Entry<String, Map<String, Double>> entrada : mapaAgrupado.entrySet()){
+            String clave = entrada.getKey();
+            String codigoImpuesto = clave.split("_")[0];
+            Map<String, Double> valores = entrada.getValue();
+            String nombreImpuesto = nombreImpuestos.get(clave);
+
+            Map<String, String > impuestoFinal = new LinkedHashMap<>();
+            impuestoFinal.put("codigo_impuesto", codigoImpuesto);
+            impuestoFinal.put("nombre_impuesto", nombreImpuesto);
+            impuestoFinal.put("numero_impuesto", String.valueOf(contador++));
+            impuestoFinal.put("porcentaje_impuesto", String.format(Locale.US ,"%.2f", valores.get("porcentaje")));
+            impuestoFinal.put("base_imponible", String.format(Locale.US, "%.2f", valores.get("base")));
+            impuestoFinal.put("monto_impuesto", String.format(Locale.US, "%.2f", valores.get("monto")));
+
+            listaImpuestosLimpia.add(impuestoFinal);
+        }
+        return listaImpuestosLimpia;
+    }
+    
     private static String generarJsonItems(List<Map<String, String>> productos) {
         StringBuilder json = new StringBuilder();
         json.append("[");
