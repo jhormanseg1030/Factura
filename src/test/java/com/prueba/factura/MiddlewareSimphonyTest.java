@@ -105,6 +105,41 @@ class MiddlewareSimphonyTest {
                 Files.deleteIfExists(temporal);
         }
 
+        @Test
+        void shouldUseTaxDataValuesFromSimphony() throws Exception {
+                String xmlContenido = """
+                        <Root>
+                            <Check CheckNum="11496" />
+                            <OraPayloadEntityField field="CheckSubtotal" value="55200.00"/>
+                            <OraPayloadEntityMI>
+                                <OraPayloadEntityField field="Total" value="55200.00"/>
+                                <OraPayloadEntityField field="DE_SATCOM_CodigoImpuesto" value="04"/>
+                                <OraPayloadEntityField field="DE_SATCOM_NombreImpuesto" value="INC 8%"/>
+                                <OraPayloadEntityField field="DE_SATCOM_Porc_Impuestos" value="8"/>
+                                <OraPayloadEntityField field="TaxData" type="List">
+                                    <ValueList>
+                                        <GenericParameterList>
+                                            <OraPayloadEntityFieldGenericParameter field="Tax" value="4088.888889"/>
+                                            <OraPayloadEntityFieldGenericParameter field="Taxable" value="51111.00"/>
+                                        </GenericParameterList>
+                                    </ValueList>
+                                </OraPayloadEntityField>
+                            </OraPayloadEntityMI>
+                        </Root>
+                        """;
+
+                Path temporal = Files.createTempFile("middleware-simphony-tax-data-", ".xml");
+                Files.writeString(temporal, xmlContenido, StandardCharsets.UTF_8);
+
+                Map<String, String> factura = MiddlewareSimphony.extraerDatosFactura(temporal.toFile());
+
+                assertTrue(factura.get("impuestos_json").contains("\"base_imponible\":\"51111.00\""));
+                assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"4088.89\""));
+                assertEquals("51111.00", factura.get("base_imponible_total"));
+
+                Files.deleteIfExists(temporal);
+        }
+
     @Test
     void shouldFailWhenFileDoesNotExist() {
         MiddlewareSimphony middleware = new MiddlewareSimphony();

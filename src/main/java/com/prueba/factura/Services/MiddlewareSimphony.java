@@ -37,6 +37,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 
@@ -61,11 +62,17 @@ public class MiddlewareSimphony implements CommandLineRunner {
     @Value("${app.cufe.registry.file:facturas_cufes.json}")
     private String cufeRegistryFile;
 
+    @Value("${app.cliente.prueba.identificacion}")
+    private String identificacionPrueba;
+
     @Autowired
     private FacturaCounterService facturaCounterService;
 
     @Autowired
     private FacturaPendienteService facturaPendienteService;
+
+    @Autowired
+    private ComunicadorBase comunicadorBase;
 
     private final HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_2)
@@ -183,6 +190,27 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
             double porcentaje = 0.0;
             double total = 0.0;
+            String taxableStr = "";
+            String taxAmountStr = "";
+
+            NodeList taxDataFields = itemsElement.getElementsByTagName("OraPayloadEntityField");
+            for (int j = 0; j < taxDataFields.getLength(); j++) {
+                Element taxData = (Element) taxDataFields.item(j);
+                if (!"TaxData".equals(taxData.getAttribute("field"))) {
+                    continue;
+                }
+
+                NodeList taxValues = taxData.getElementsByTagName("OraPayloadEntityFieldGenericParameter");
+                for (int k = 0; k < taxValues.getLength(); k++) {
+                    Element taxValue = (Element) taxValues.item(k);
+                    String field = taxValue.getAttribute("field");
+                    if ("Taxable".equals(field)) {
+                        taxableStr = taxValue.getAttribute("value");
+                    } else if ("Tax".equals(field)) {
+                        taxAmountStr = taxValue.getAttribute("value");
+                    }
+                }
+            }
 
             try{
                 porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
@@ -191,8 +219,15 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 continue;
             }
 
-            double baseImponibleItem = total /(1.0 + (porcentaje / 100.0));
-            double montoImpuestoItem = total - baseImponibleItem;
+            double baseImponibleItem;
+            double montoImpuestoItem;
+            if (!taxableStr.isBlank() && !taxAmountStr.isBlank()) {
+                baseImponibleItem = Double.parseDouble(taxableStr.replace(',', '.'));
+                montoImpuestoItem = Double.parseDouble(taxAmountStr.replace(',', '.'));
+            } else {
+                baseImponibleItem = total /(1.0 + (porcentaje / 100.0));
+                montoImpuestoItem = total - baseImponibleItem;
+            }
 
             String claveUnica = codigo + "_" + porcentajeStr;
             nombreImpuestos.putIfAbsent(claveUnica, nombre);
@@ -204,6 +239,42 @@ public class MiddlewareSimphony implements CommandLineRunner {
             mapaAgrupado.get(claveUnica).put("monto", valoresActuales.getOrDefault("monto", 0.0) + montoImpuestoItem);
             mapaAgrupado.get(claveUnica).put("porcentaje", porcentaje);
         }
+
+        if (mapaAgrupado.isEmpty()) {
+            NodeList impuestoFields = doc.getElementsByTagName("OraPayloadEntityFieldGenericParameter");
+            Map<String, String> impuestoGlobal = new HashMap<>();
+
+            for (int i = 0; i < impuestoFields.getLength(); i++) {
+                Element field = (Element) impuestoFields.item(i);
+                String name = field.getAttribute("field");
+                String value = field.getAttribute("value");
+                if (name != null && !name.isBlank()) {
+                    impuestoGlobal.put(name, value == null ? "" : value);
+                }
+            }
+
+            String codigo = impuestoGlobal.getOrDefault("DE_SATCOM_CodigoImpuesto", "");
+            String porcentajeStr = impuestoGlobal.getOrDefault("DE_SATCOM_Porc_Impuestos", "0.00");
+            String nombre = impuestoGlobal.getOrDefault("DE_SATCOM_NombreImpuesto", "");
+
+            try {
+                double porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
+                double total = Double.parseDouble(subtotalFacturaStr.replace(',', '.'));
+                if (!codigo.isEmpty() && porcentaje > 0 && total > 0) {
+                    double baseImponible = total / (1.0 + (porcentaje / 100.0));
+                    double montoImpuesto = total - baseImponible;
+                    String claveUnica = codigo + "_" + porcentajeStr;
+                    Map<String, Double> valores = new HashMap<>();
+                    valores.put("base", baseImponible);
+                    valores.put("monto", montoImpuesto);
+                    valores.put("porcentaje", porcentaje);
+                    mapaAgrupado.put(claveUnica, valores);
+                    nombreImpuestos.put(claveUnica, nombre);
+                }
+            } catch (NumberFormatException ignored) {
+            }
+        }
+
         List<Map<String, String>> listaImpuestosLimpia = new ArrayList<>();
         int contador = 1;
 
@@ -351,6 +422,13 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 if("RangoFin".equals(name)){
                     result.putIfAbsent("RangoFin", value == null ? "": value);
                 }
+                if ("CustomerIdentification".equals(name)
+                    || "CustomerIDNumber".equals(name)
+                    || "CustomerDocumentNumber".equals(name)
+                    || "CustomerIdentificationNumber".equals(name)
+                    || "DE_SATCOM_IdentificacionCliente".equals(name)) {
+                    result.putIfAbsent("identificacion_cliente", value == null ? "" : value);
+                }
             }
 
             List<Map<String, String>> productos = extraerProductos(doc);
@@ -365,8 +443,10 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
             List<Map<String, String>> impuestos = extraerImpuestos(doc, result.getOrDefault("subtotal", "0.00"));
             double totalImpuestos = 0.0;
+            double totalBaseImponible = 0.0;
             for (Map<String, String> impuesto : impuestos) {
                 totalImpuestos += Double.parseDouble(impuesto.getOrDefault("monto_impuesto", "0.00"));
+                totalBaseImponible += Double.parseDouble(impuesto.getOrDefault("base_imponible", "0.00"));
             }
 
             result.putIfAbsent("genera_documento", "FALSE");
@@ -378,6 +458,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
             result.putIfAbsent("precio_unitario", "");
             result.putIfAbsent("subtotal", "");
             result.put("total_impuestos", String.format(Locale.US, "%.2f", totalImpuestos));
+            result.put("base_imponible_total", String.format(Locale.US, "%.2f", totalBaseImponible));
             result.putIfAbsent("propina", "");
             result.putIfAbsent("total", "");
             result.putIfAbsent("restaurante", "");
@@ -409,36 +490,39 @@ public class MiddlewareSimphony implements CommandLineRunner {
             String codigoFiscal = datos.getOrDefault("codigo_fiscal", "N/A");
             String guid = datos.getOrDefault("guid_transaccion", "N/A");
 
-            double subtotalNum = Double.parseDouble(datos.getOrDefault("subtotal", "0.00").replace(',', '.'));
+            double valFacNum = Double.parseDouble(datos.getOrDefault("base_imponible_total", "0.00").replace(',', '.'));
             double totalNum = Double.parseDouble(datos.getOrDefault("total", "0.00").replace(',', '.'));
 
             double ivaNum = 0.00;
-            double incNum = 0.00;
+            double incNum = Double.parseDouble(datos.getOrDefault("total_impuestos", "0.00").replace(',', '.'));
             double icaNum = 0.00;
 
             String claveTecnicaXml = datos.getOrDefault("ClaveTecnica", "");
             String nitEmisor = datos.getOrDefault("RucEmisor", "8605108638");
             String prefijoFac = datos.getOrDefault("RangoIni", "SETT").replaceAll("[0-9]", "");
+            String identificacionCliente = datos.getOrDefault("identificacion_cliente", "");
+            JsonNode cliente = comunicadorBase.buscarPorIdentificacion(identificacionCliente);
+            if (identificacionCliente.isBlank()) {
+                identificacionCliente = identificacionPrueba;
+                logger.warn("El XML no trae identificacion del cliente; no se puede consultar la base");
+            } else if (cliente == null) {
+                logger.warn("No se encontro el cliente con identificacion {}", identificacionCliente);
+            }
+            
 
             String identificadorFactura = construirIdentificadorFactura(datos);
             Map<String, String> registroExistente = leerRegistroCufe(identificadorFactura);
-            String numeroFacturaCompleto = registroExistente == null
-                ? prefijoFac + facturaCounterService.obtenerSiguienteNumero()
+            String numeroFacturaCompleto = registroExistente == null ? null
                 : registroExistente.get("numero_factura_completo");
-            String fechaFac = "2026-08-23";
-            String horaFac = "22:14:11-05:00";
-            String numAdquiriente = "222222222";
-
-            String cufeGenerado = registroExistente == null
-                ? CufeServices.generarCufe(numeroFacturaCompleto, fechaFac, horaFac, subtotalNum, "01", ivaNum,
-                    "04", incNum, "00", icaNum, totalNum, nitEmisor, numAdquiriente, claveTecnicaXml, tipoAmbiente)
-                : registroExistente.get("cufe");
+            String cufeGenerado = registroExistente == null ? null : registroExistente.get("cufe");
 
             System.out.println("Datos Extraidos del XML:");
             System.out.println("• Ticket (CheckNum):" + checkNum);
             System.out.println("• Estación (WsID):" + wsId);
             System.out.println("• Fecha/Hora: "+ timestamp);
             System.out.println("• Condición de Venta: "+ condicionVenta);
+            System.out.println("• Identificación Cliente: "+ identificacionCliente);
+            System.out.println("• Cliente Encontrado: "+ (cliente != null));
             System.out.println("• Código Fiscal: "+ codigoFiscal);
             System.out.println("• GUID Transaccion: "+ guid);
             System.out.println("• Genera Documento: "+ generaDoc);
@@ -454,8 +538,22 @@ public class MiddlewareSimphony implements CommandLineRunner {
             System.out.println("• Impuestos: "+ datos.getOrDefault("impuestos_json", "[]"));
             System.out.println("• Items: "+ datos.getOrDefault("items_json", "[]"));
             System.out.println("• CUFE Generado: "+ cufeGenerado);
+            System.out.println("• Prefijo Factura: "+ prefijoFac);
 
             if("TRUE".equalsIgnoreCase(generaDoc)){
+                if (registroExistente == null) {
+                    numeroFacturaCompleto = prefijoFac + facturaCounterService.obtenerSiguienteNumero();
+                    String fechaFac = timestamp.substring(0, 10);
+                    String horaFac = timestamp.substring(11);
+                    String numAdquiriente = cliente == null
+                        ? "222222222"
+                        : cliente.path("identificacion").asText("222222222");
+                    cufeGenerado = CufeServices.generarCufe(numeroFacturaCompleto, fechaFac, horaFac, valFacNum, "01", ivaNum,
+                        "04", incNum, "00", icaNum, totalNum, nitEmisor, numAdquiriente, claveTecnicaXml, tipoAmbiente);
+                }
+                String urlQr = generarUrlQr(cufeGenerado);
+                System.out.println("• Url Qr: " + urlQr);
+
                 Map<String, Object> jsonMap = new LinkedHashMap<>();
                 jsonMap.put("numero_factura", numeroFacturaCompleto);
                 jsonMap.put("fecha_procesamiento", LocalDateTime.now().toString());
@@ -479,9 +577,14 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 jsonMap.put("restaurante", datos.getOrDefault("restaurante", "N/A"));
                 jsonMap.put("workstation", datos.getOrDefault("workstation_nombre", "N/A"));
                 jsonMap.put("empleado", datos.getOrDefault("empleado", "N/A"));
+                jsonMap.put("identificacion_cliente", identificacionCliente);
+                jsonMap.put("cliente", cliente);
+                jsonMap.put("cliente_encontrado", cliente != null);
                 jsonMap.put("impuestos", objectMapper.readTree(datos.getOrDefault("impuestos_json", "[]")));
                 jsonMap.put("items", objectMapper.readTree(datos.getOrDefault("items_json", "[]")));
                 jsonMap.put("cufe", cufeGenerado);
+                jsonMap.put("qr", urlQr);
+                jsonMap.put("qr_url", urlQr);
                 String jsonPayload = objectMapper.writeValueAsString(jsonMap);
                 guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
                 enviarHttpPOST(jsonPayload);
@@ -575,4 +678,12 @@ public class MiddlewareSimphony implements CommandLineRunner {
             facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
         }
     }
+
+    private String generarUrlQr(String cufe){
+        if(cufe == null || cufe.isBlank()){
+            throw new IllegalArgumentException("El CUFE no puede estar vacio");
+        }
+        return "https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=" + cufe;
+    }
+
 }
