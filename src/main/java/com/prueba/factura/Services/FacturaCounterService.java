@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
 
 @Service
 public class FacturaCounterService {
@@ -21,17 +22,19 @@ public class FacturaCounterService {
 
     @Value("${app.counter.file:factura_counter.txt}")
     private String counterFile;
-
+    String numAdquiriente = "222222222";
     private final AtomicLong contador = new AtomicLong(0);
 
+    @PostConstruct
     public void init(){
         long inicial = leerContador();
         contador.set(inicial);
         logger.info("Contador inicializado en memoria con el valor: {}", inicial);
     }
 
-    public  long obtenerSiguienteNumero() {
+    public synchronized long obtenerSiguienteNumero() {
         long siguiente = contador.incrementAndGet();
+        guardarContador(siguiente);
         logger.info("Factura #{} asignada", siguiente);
         return siguiente;
     }
