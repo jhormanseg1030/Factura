@@ -477,7 +477,6 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
     public void procesarXML(File xmlFile){
         try{
-
             Map<String, String> datos = extraerDatosFactura(xmlFile);
 
             String checkNum = datos.getOrDefault("numero_ticket", "");
@@ -508,7 +507,6 @@ public class MiddlewareSimphony implements CommandLineRunner {
             } else if (cliente == null) {
                 logger.warn("No se encontro el cliente con identificacion {}", identificacionCliente);
             }
-            
 
             String identificadorFactura = construirIdentificadorFactura(datos);
             Map<String, String> registroExistente = leerRegistroCufe(identificadorFactura);
@@ -516,29 +514,21 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 : registroExistente.get("numero_factura_completo");
             String cufeGenerado = registroExistente == null ? null : registroExistente.get("cufe");
 
-            System.out.println("Datos Extraidos del XML:");
-            System.out.println("• Ticket (CheckNum):" + checkNum);
-            System.out.println("• Estación (WsID):" + wsId);
-            System.out.println("• Fecha/Hora: "+ timestamp);
-            System.out.println("• Condición de Venta: "+ condicionVenta);
-            System.out.println("• Identificación Cliente: "+ identificacionCliente);
-            System.out.println("• Cliente Encontrado: "+ (cliente != null));
-            System.out.println("• Código Fiscal: "+ codigoFiscal);
-            System.out.println("• GUID Transaccion: "+ guid);
-            System.out.println("• Genera Documento: "+ generaDoc);
-            System.out.println("• Resolucion: "+ datos.getOrDefault("Resolucion", "N/A"));
-            System.out.println("• ResolucionIni: "+ datos.getOrDefault("ResolucionIni", "N/A"));
-            System.out.println("• ResolucionFin: "+ datos.getOrDefault("ResolucionFin", "N/A"));
-            System.out.println("• FechaResolucion: " + datos.getOrDefault("FechaResolucion", "N/A"));
-            System.out.println("• Propina: "+ datos.getOrDefault("propina", "N/A"));
-            System.out.println("• Total: "+ datos.getOrDefault("total", "N/A"));
-            System.out.println("• Restaurante: "+ datos.getOrDefault("restaurante", "N/A"));
-            System.out.println("• Workstation: "+ datos.getOrDefault("workstation_nombre", "N/A"));
-            System.out.println("• Empleado: "+ datos.getOrDefault("empleado", "N/A"));
-            System.out.println("• Impuestos: "+ datos.getOrDefault("impuestos_json", "[]"));
-            System.out.println("• Items: "+ datos.getOrDefault("items_json", "[]"));
-            System.out.println("• CUFE Generado: "+ cufeGenerado);
-            System.out.println("• Prefijo Factura: "+ prefijoFac);
+            logger.info("=== Datos Extraídos del XML ===");
+            logger.info("• Ticket (CheckNum): {}", checkNum);
+            logger.info("• Estación (WsID): {}", wsId);
+            logger.info("• Fecha/Hora: {}", timestamp);
+            logger.info("• Condición de Venta: {}", condicionVenta);
+            logger.info("• Identificación Cliente: {}", identificacionCliente);
+            logger.info("• Cliente Encontrado: {}", (cliente != null));
+            logger.info("• Código Fiscal: {}", codigoFiscal);
+            logger.info("• GUID Transaccion: {}", guid);
+            logger.info("• Genera Documento: {}", generaDoc);
+            logger.info("• Propina: {}", datos.getOrDefault("propina", "N/A"));
+            logger.info("• Total: {}", datos.getOrDefault("total", "N/A"));
+            logger.info("• Restaurante: {}", datos.getOrDefault("restaurante", "N/A"));
+            logger.info("• CUFE Generado: {}", cufeGenerado);
+            logger.info("• Prefijo Factura: {}", prefijoFac);
 
             if("TRUE".equalsIgnoreCase(generaDoc)){
                 if (registroExistente == null) {
@@ -552,7 +542,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
                         "04", incNum, "00", icaNum, totalNum, nitEmisor, numAdquiriente, claveTecnicaXml, tipoAmbiente);
                 }
                 String urlQr = generarUrlQr(cufeGenerado);
-                System.out.println("• Url Qr: " + urlQr);
+                logger.info("• Url Qr: {}", urlQr);
 
                 Map<String, Object> jsonMap = new LinkedHashMap<>();
                 jsonMap.put("numero_factura", numeroFacturaCompleto);
@@ -585,21 +575,21 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 jsonMap.put("cufe", cufeGenerado);
                 jsonMap.put("qr", urlQr);
                 jsonMap.put("qr_url", urlQr);
+
                 String jsonPayload = objectMapper.writeValueAsString(jsonMap);
                 guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
                 enviarHttpPOST(jsonPayload);
             } else {
-                System.out.println("La factura no requiere procesamiento de documento fiscal");
+                logger.info("La factura no requiere procesamiento de documento fiscal");
             }
 
             Path origen = xmlFile.toPath();
             Path destino = Paths.get(dirProcessed, xmlFile.getName());
-        Files.move(origen, destino, StandardCopyOption.REPLACE_EXISTING);
-            System.out.println("Archivo movido a carpeta de procesados /processed\n");
+            Files.move(origen, destino, StandardCopyOption.REPLACE_EXISTING);
+            logger.info("Archivo movido a carpeta de procesados /processed\n");
 
-        }catch(Exception e){
-            System.err.println("ERROR procesando el archivo xml:" + e.getMessage());
-            e.printStackTrace();
+        } catch(Exception e){
+            logger.error("ERROR procesando el archivo XML {}: {}", xmlFile.getName(), e.getMessage(), e);
         }
     }
 
