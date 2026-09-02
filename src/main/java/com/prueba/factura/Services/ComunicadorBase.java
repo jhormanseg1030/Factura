@@ -6,6 +6,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -14,12 +16,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class ComunicadorBase {
+    private static final Logger logger = LoggerFactory.getLogger(ComunicadorBase.class);
+    
     private final HttpClient client = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(5))
         .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${app.clientes.api.url:http://192.168.10.129:8000/api/api.php}")
+    @Value("${app.clientes.api.url:http://192.168.10.111:8000/api/api.php?action-list}")
     private String api;
 
     public JsonNode buscarPorIdentificacion(String identificacion) {
@@ -35,7 +39,8 @@ public class ComunicadorBase {
                 .build();
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() < 200 || res.statusCode() >= 300) {
-                throw new IllegalStateException("La base de clientes respondió HTTP " + res.statusCode());
+                logger.warn("La base de clientes respondió HTTP {}", res.statusCode());
+                return null;
             }
 
             JsonNode respuesta = objectMapper.readTree(res.body());
@@ -46,7 +51,43 @@ public class ComunicadorBase {
             }
             return null;
         } catch (Exception e) {
-            throw new IllegalStateException("No se pudo consultar la base de clientes", e);
+            logger.warn("No se pudo consultar la base de clientes por identificacion: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    public JsonNode buscarPorCheckId(String checkId) {
+        if (checkId == null || checkId.isBlank()) {
+            return null;
+        }
+
+        try {
+            // NOTA: La API debe consultar la tabla factura_cliente
+            // SELECT c.* FROM clientes c 
+            // JOIN factura_cliente fc ON c.id = fc.usuario
+            // WHERE fc.check_id = ?
+            HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(api + "?action=list"))
+                .timeout(Duration.ofSeconds(10))
+                .GET()
+                .build();
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() < 200 || res.statusCode() >= 300) {
+                logger.warn("La base de clientes respondió HTTP {}", res.statusCode());
+                return null;
+            }
+
+            JsonNode respuesta = objectMapper.readTree(res.body());
+            for (JsonNode cliente : respuesta.path("data")) {
+                String clienteCheckId = cliente.path("check_id").asText();
+                if (checkId.equals(clienteCheckId) && !clienteCheckId.isEmpty()) {
+                    return cliente;
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            logger.warn("No se pudo consultar la base de clientes por check_id: {}", e.getMessage());
+            return null;
         }
     }
 
