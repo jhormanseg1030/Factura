@@ -6,5 +6,9 @@
   "guid:491b88e4785e4a5180898e36e3c0bccf00017388" : {
     "numero_factura_completo" : "P1",
     "cufe" : "732e007436172da0fc269f96fa09109abc7abd1b4efc585cb192c2a49d55b8bab71bdd1e04e8eb75875c21d900bd58e5"
+  },
+  "guid:082acaa0b3f74e3e8b4c979c2ce5713400055008" : {
+    "numero_factura_completo" : "EVI3",
+    "cufe" : "43150416bf3d10aa0a47215c29609c40855a0b8cd56e652afcf1eb3d0c1eeb792d74b25614ea10d777b60f0abcea5b6a"
   }
 }

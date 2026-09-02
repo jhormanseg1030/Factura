@@ -16,6 +16,8 @@ import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -59,11 +61,11 @@ public class MiddlewareSimphony implements CommandLineRunner {
     @Value("${app.dian.ambiente:2}")
     private String tipoAmbiente;
 
+    @Value("${app.cliente.consumidor-final.identificacion:2222222222}")
+    private String identificacionConsumidorFinal;   
+
     @Value("${app.cufe.registry.file:facturas_cufes.json}")
     private String cufeRegistryFile;
-
-    @Value("${app.cliente.prueba.identificacion}")
-    private String identificacionPrueba;
 
     @Autowired
     private FacturaCounterService facturaCounterService;
@@ -297,6 +299,64 @@ public class MiddlewareSimphony implements CommandLineRunner {
         return listaImpuestosLimpia;
     }
     
+private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
+    List<Map<String, Object>> tenderMediaList = new ArrayList<>();
+    
+    // Buscar por OraPayloadEntityTmed (la estructura correcta de Simphony)
+    NodeList tenders = doc.getElementsByTagName("OraPayloadEntityTmed");
+    logger.info("TenderMedia encontrados: {}", tenders.getLength());
+
+    for (int i = 0; i < tenders.getLength(); i++) {
+        Element tenderElement = (Element) tenders.item(i);
+        NodeList fields = tenderElement.getElementsByTagName("OraPayloadEntityField");
+        Map<String, String> campos = new HashMap<>();
+
+        // Extraer todos los campos en un mapa
+        for (int j = 0; j < fields.getLength(); j++) {
+            Element field = (Element) fields.item(j);
+            String name = field.getAttribute("field");
+            String value = field.getAttribute("value");
+            if (name != null && !name.isBlank()) {
+                campos.put(name, value == null ? "" : value);
+            }
+        }
+
+        // Extraer valores con fallbacks
+        String objectNumberStr = campos.getOrDefault("ObjectNumber", "0");
+        String montoStr = campos.getOrDefault("CurrencyAmount", campos.getOrDefault("Total", "0.00"));
+        String tipStr = campos.getOrDefault("ChargeTip", campos.getOrDefault("Tip", "0.00"));
+        String nombrePago = campos.getOrDefault("Name", "Pago");
+        String refNum = campos.getOrDefault("ReferenceNumber", campos.getOrDefault("AuthCode", ""));
+
+        logger.debug("TenderMedia [{}] - ObjectNumber: {}, Monto: {}, Tip: {}, Nombre: {}", 
+            i, objectNumberStr, montoStr, tipStr, nombrePago);
+
+        // Crear objeto de pago solo si hay monto
+        if (!montoStr.isBlank() && !montoStr.equals("0.00")) {
+            Map<String, Object> pagoMap = new LinkedHashMap<>();
+
+            int tenderMediaId = parseIntSafe(objectNumberStr, 0);
+            double tenderAmount = parseDoubleSafe(montoStr, 0.00);
+            double tipAmount = parseDoubleSafe(tipStr, 0.00);
+
+            pagoMap.put("tenderMediaId", tenderMediaId);
+            pagoMap.put("tenderName", nombrePago);
+            pagoMap.put("tenderAmount", tenderAmount);
+            pagoMap.put("tipAmount", tipAmount);
+
+            if (!refNum.isBlank()) {
+                pagoMap.put("referenceNumber", refNum);
+            }
+
+            tenderMediaList.add(pagoMap);
+            logger.info("Pago agregado: {}", pagoMap);
+        }
+    }
+    
+    logger.info("Total pagos extraídos: {}", tenderMediaList.size());
+    return tenderMediaList;
+}
+
     private static String generarJsonItems(List<Map<String, String>> productos) {
         StringBuilder json = new StringBuilder();
         json.append("[");
@@ -468,6 +528,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
             ObjectMapper mapper = new ObjectMapper();
             result.put("impuestos_json", mapper.writeValueAsString(impuestos));
             result.put("items_json", generarJsonItems(productos));
+            List<Map<String, Object>> pagos = extraerTenderMediaList(doc);
+            result.put("pagos_json", mapper.writeValueAsString(pagos));
 
             return result;
         } catch (Exception e) {
@@ -500,12 +562,38 @@ public class MiddlewareSimphony implements CommandLineRunner {
             String nitEmisor = datos.getOrDefault("RucEmisor", "8605108638");
             String prefijoFac = datos.getOrDefault("RangoIni", "SETT").replaceAll("[0-9]", "");
             String identificacionCliente = datos.getOrDefault("identificacion_cliente", "");
-            JsonNode cliente = comunicadorBase.buscarPorIdentificacion(identificacionCliente);
-            if (identificacionCliente.isBlank()) {
-                identificacionCliente = identificacionPrueba;
-                logger.warn("El XML no trae identificacion del cliente; no se puede consultar la base");
-            } else if (cliente == null) {
-                logger.warn("No se encontro el cliente con identificacion {}", identificacionCliente);
+            
+            JsonNode cliente = null;
+            
+            if (!identificacionCliente.isBlank()) {
+                cliente = comunicadorBase.buscarPorIdentificacion(identificacionCliente);
+                if (cliente != null) {
+                    logger.info("Cliente encontrado por identificacion: {}", identificacionCliente);
+                }
+            }
+            
+            if (cliente == null && !checkId.isBlank()) {
+                cliente = comunicadorBase.buscarPorCheckId(checkId);
+                if (cliente != null) {
+                    logger.info("Cliente encontrado por check_id: {}", checkId);
+                } else {
+                    logger.warn("No se encontró cliente con check_id: {}", checkId);
+                }
+            }
+            
+            if (cliente == null) {
+                if (identificacionCliente.isBlank() && checkId.isBlank()) {
+                    logger.warn("El XML no trae identificacion_cliente ni check_id; no se puede consultar la base");
+                } else {
+                    logger.warn("No se encontro el cliente con identificacion: {} o check_id: {}", 
+                        identificacionCliente, checkId);
+                }
+            }
+
+            if (cliente == null && identificacionCliente.isBlank()) {
+                identificacionCliente = identificacionConsumidorFinal;
+                logger.info("Venta sin cliente identificado; se usará consumidor final: {}",
+                    identificacionConsumidorFinal);
             }
 
             String identificadorFactura = construirIdentificadorFactura(datos);
@@ -533,11 +621,11 @@ public class MiddlewareSimphony implements CommandLineRunner {
             if("TRUE".equalsIgnoreCase(generaDoc)){
                 if (registroExistente == null) {
                     numeroFacturaCompleto = prefijoFac + facturaCounterService.obtenerSiguienteNumero();
-                    String fechaFac = timestamp.substring(0, 10);
-                    String horaFac = timestamp.substring(11);
+                    String fechaFac = obtenerFechaCufe(timestamp);
+                    String horaFac = obtenerHoraCufe(timestamp);
                     String numAdquiriente = cliente == null
-                        ? "222222222"
-                        : cliente.path("identificacion").asText("222222222");
+                        ? identificacionConsumidorFinal
+                        : cliente.path("identificacion").asText(identificacionConsumidorFinal);
                     cufeGenerado = CufeServices.generarCufe(numeroFacturaCompleto, fechaFac, horaFac, valFacNum, "01", ivaNum,
                         "04", incNum, "00", icaNum, totalNum, nitEmisor, numAdquiriente, claveTecnicaXml, tipoAmbiente);
                 }
@@ -572,6 +660,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 jsonMap.put("cliente_encontrado", cliente != null);
                 jsonMap.put("impuestos", objectMapper.readTree(datos.getOrDefault("impuestos_json", "[]")));
                 jsonMap.put("items", objectMapper.readTree(datos.getOrDefault("items_json", "[]")));
+                jsonMap.put("pagos", objectMapper.readTree(datos.getOrDefault("pagos_json", "[]")));
                 jsonMap.put("cufe", cufeGenerado);
                 jsonMap.put("qr", urlQr);
                 jsonMap.put("qr_url", urlQr);
@@ -643,6 +732,19 @@ public class MiddlewareSimphony implements CommandLineRunner {
         }
     }
 
+    private String obtenerFechaCufe(String timestamp) {
+        return timestamp.length() >= 10 ? timestamp.substring(0, 10) : timestamp;
+    }
+
+    private String obtenerHoraCufe(String timestamp) {
+        try {
+            return OffsetDateTime.parse(timestamp)
+                .format(DateTimeFormatter.ofPattern("HH:mm:ssXXX"));
+        } catch (Exception e) {
+            return timestamp.length() >= 19 ? timestamp.substring(11, 19) : timestamp;
+        }
+    }
+
     private void enviarHttpPOST(String jsonPayload){
         try{
             HttpRequest request = HttpRequest.newBuilder()
@@ -674,6 +776,30 @@ public class MiddlewareSimphony implements CommandLineRunner {
             throw new IllegalArgumentException("El CUFE no puede estar vacio");
         }
         return "https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=" + cufe;
+    }
+
+    private static int parseIntSafe(String value, int defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (NumberFormatException e) {
+            logger.warn("No se pudo parsear '{}' como entero, usando default: {}", value, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private static double parseDoubleSafe(String value, double defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Double.parseDouble(value.trim());
+        } catch (NumberFormatException e) {
+            logger.warn("No se pudo parsear '{}' como double, usando default: {}", value, defaultValue);
+            return defaultValue;
+        }
     }
 
 }

@@ -3,6 +3,8 @@ package com.prueba.factura.Services;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Locale;
 
 public class CufeServices {
@@ -28,11 +30,11 @@ public class CufeServices {
         String ciTec,
         String tipoAmbiente){
 
-        String valFacStr = String.format(Locale.US, "%.2f", valFac);
-        String valIvaStr = String.format(Locale.US , "%.2f", valIva);
-        String valIncStr = String.format(Locale.US , "%.2f", valInc);
-        String valIcaStr = String.format(Locale.US , "%.2f", valIca);
-        String valTotalStr = String.format(Locale.US , "%.2f", valTotal);
+        String valFacStr = truncarDosDecimales(valFac);
+        String valIvaStr = truncarDosDecimales(valIva);
+        String valIncStr = truncarDosDecimales(valInc);
+        String valIcaStr = truncarDosDecimales(valIca);
+        String valTotalStr = truncarDosDecimales(valTotal);
 
         StringBuilder cufeBuilder = new StringBuilder();
         cufeBuilder.append(numFac)
@@ -43,12 +45,20 @@ public class CufeServices {
             .append(codImp2).append(valIncStr)
             .append(codImp3).append(valIcaStr)
             .append(valTotalStr)
-            .append(nitFe)
-            .append(numAdq)
+            .append(soloDigitos(nitFe))
+            .append(soloDigitos(numAdq))
             .append(ciTec)
             .append(tipoAmbiente);
 
         return sha384Hex(cufeBuilder.toString());
+    }
+
+    private static String truncarDosDecimales(double valor) {
+        return BigDecimal.valueOf(valor).setScale(2, RoundingMode.DOWN).toPlainString();
+    }
+
+    private static String soloDigitos(String valor) {
+        return valor == null ? "" : valor.replaceAll("[^0-9]", "");
     }
 
     private static String sha384Hex(String input){
