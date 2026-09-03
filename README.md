@@ -241,4 +241,4 @@ mvn test
    - watcher leyendo XML incompleto
    - tailer creciendo buffer
 4. Finalmente optimiza calidad/observabilidad (logging, reutilizar clientes HTTP, etc.).
-
+5.cambio
