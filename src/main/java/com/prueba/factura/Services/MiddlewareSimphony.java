@@ -132,30 +132,69 @@ public class MiddlewareSimphony implements CommandLineRunner {
         }
     }
 
-    private static List<Map<String, String>> extraerProductos(Document doc) {
-        List<Map<String, String>> productos = new ArrayList<>();
+    private static List<Map<String, Object>> extraerProductos(Document doc){
+        List<Map<String, Object>> productos = new ArrayList<>();
         NodeList menuItems = doc.getElementsByTagName("OraPayloadEntityMI");
 
-        for (int i = 0; i < menuItems.getLength(); i++) {
+        for(int i = 0; i < menuItems.getLength(); i++){
             Element itemElement = (Element) menuItems.item(i);
             NodeList fields = itemElement.getElementsByTagName("OraPayloadEntityField");
-            Map<String, String> item = new HashMap<>();
+            Map<String, String> itemFields = new HashMap<>();
 
-            for (int j = 0; j < fields.getLength(); j++) {
-                Element field = (Element) fields.item(j);
+            for(int j = 0; j < fields.getLength(); j++){
+                Element field = (Element) fields.item(i);
                 String name = field.getAttribute("field");
                 String value = field.getAttribute("value");
-                if (name != null && !name.isBlank()) {
-                    item.put(name, value == null ? "" : value);
+                if(name != null && !name.isBlank()){
+                    itemFields.put(name, value == null ? "" : value);
                 }
             }
-
-            String nombreProducto = item.get("Name");
-            if (nombreProducto != null && !nombreProducto.isBlank()) {
-                productos.add(item);
+            String nombreProducto = itemFields.getOrDefault("Name ", "");
+            if(nombreProducto.isBlank()){
+                continue;
             }
-        }
+            String codigo = itemFields.getOrDefault("MenuItemNumber", itemFields.getOrDefault("ObjectNumber", "PLT-" + (i + 1)));
+            String cantidadStr = itemFields.getOrDefault("SalesCount", "1");
+            String totalItemStr = itemFields.getOrDefault("Total", "0.00");
 
+            String codImpuesto = itemFields.getOrDefault("DE_SATCOM_CodigoImpuesto", "01");
+            String porcImpuesto = itemFields.getOrDefault("DE_SATCOM_Porc_Impuestos", "0.00");
+            String nombreImpuesto = itemFields.getOrDefault("DE_SATCOM_NombreImpuesto", "IVA");
+
+            double totalItem = parseDoubleSafe(totalItemStr.replace(',', '.'), 0.0);
+            double cantidad = parseDoubleSafe(cantidadStr.replace(',', '.'), 0.0);
+            if(cantidad <= 0) cantidad = 1.0;
+            double porcentajeImp = parseDoubleSafe(porcImpuesto.replace(',', '.'), 0.0);
+
+            //metodo matematico
+            double baseImponible = porcentajeImp > 0 ?(totalItem / (1.0 + (porcentajeImp / 100.00))) : totalItem;
+            double valorImpuesto = baseImponible * (porcentajeImp / 100.0);
+            double precioUnitatioSimImpuesto = baseImponible / cantidad;
+
+            Map<String, Object> itemMap = new LinkedHashMap<>();
+            itemMap.put("codigo", codigo);
+            itemMap.put("nombre", nombreProducto);
+            itemMap.put("descripcion", nombreProducto);
+            itemMap.put("unidad_medida", "94");
+            itemMap.put("cantida", String.format(Locale.US, "%.2f", cantidad));
+            itemMap.put("precio", String.format(Locale.US, "%.2f", precioUnitatioSimImpuesto));
+            itemMap.put("descuento", "0.00");
+            itemMap.put("subtotal", String.format(Locale.US, "%.2f", baseImponible));
+
+            List<Map<String, String>> impuestosItem = new ArrayList<>();
+            if(!codImpuesto.isBlank() && porcentajeImp > 0){
+                Map<String, String> impMap = new LinkedHashMap<>();
+                impMap.put("codigo", codImpuesto);
+                impMap.put("nombre", nombreImpuesto.isBlank() ? "IVA" : nombreImpuesto);
+                impMap.put("porcentaje", String.format(Locale.US, "%.2f", porcentajeImp));
+                impMap.put("base", String.format(Locale.US, "%.2f", baseImponible));
+                impMap.put("valor", String.format(Locale.US, "%.2f", valorImpuesto));
+                impuestosItem.add(impMap);
+            }
+            itemMap.put("impuestos", impuestosItem);
+
+            productos.add(itemMap);
+        }
         return productos;
     }
 
@@ -298,11 +337,9 @@ public class MiddlewareSimphony implements CommandLineRunner {
         }
         return listaImpuestosLimpia;
     }
-    
 private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
     List<Map<String, Object>> tenderMediaList = new ArrayList<>();
     
-    // Buscar por OraPayloadEntityTmed (la estructura correcta de Simphony)
     NodeList tenders = doc.getElementsByTagName("OraPayloadEntityTmed");
     logger.info("TenderMedia encontrados: {}", tenders.getLength());
 
@@ -356,36 +393,6 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
     logger.info("Total pagos extraídos: {}", tenderMediaList.size());
     return tenderMediaList;
 }
-
-    private static String generarJsonItems(List<Map<String, String>> productos) {
-        StringBuilder json = new StringBuilder();
-        json.append("[");
-
-        for (int i = 0; i < productos.size(); i++) {
-            Map<String, String> item = productos.get(i);
-            String nombre = item.getOrDefault("Name", "");
-            String cantidad = item.getOrDefault("SalesCount", "");
-            String precio = item.getOrDefault("UnitPrice", "");
-            String subtotal = item.getOrDefault("Total", precio);
-
-            if (i > 0) {
-                json.append(",");
-            }
-
-            json.append("{\"nombre\":\"")
-                .append(nombre.replace("\"", "\\\""))
-                .append("\",\"cantidad\":\"")
-                .append(cantidad.replace("\"", "\\\""))
-                .append("\",\"precio\":\"")
-                .append(precio.replace("\"", "\\\""))
-                .append("\",\"subtotal\":\"")
-                .append(subtotal.replace("\"", "\\\""))
-                .append("\"}");
-        }
-
-        json.append("]");
-        return json.toString();
-    }
 
     public static Map<String, String> extraerDatosFactura(File xmlFile) {
         try {
@@ -491,22 +498,19 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 }
             }
 
-            List<Map<String, String>> productos = extraerProductos(doc);
-
-            if (!productos.isEmpty()) {
-                Map<String, String> primerProducto = productos.get(0);
-                result.putIfAbsent("producto", primerProducto.getOrDefault("Name", ""));
-                result.putIfAbsent("cantidad", primerProducto.getOrDefault("SalesCount", ""));
-                result.putIfAbsent("precio_unitario", primerProducto.getOrDefault("UnitPrice", ""));
-                result.putIfAbsent("subtotal", primerProducto.getOrDefault("Total", ""));
-            }
+            //Propina 
+            List<Map<String, Object>> productos = extraerProductos(doc);
+            String propinaRaw = result.getOrDefault("propina", "0.00");
+            double propinaNum = parseDoubleSafe(propinaRaw.replace(',', '.'), 0.0);
+            result.put("propina", String.format(Locale.US, "%.2f", propinaNum));
 
             List<Map<String, String>> impuestos = extraerImpuestos(doc, result.getOrDefault("subtotal", "0.00"));
+
             double totalImpuestos = 0.0;
             double totalBaseImponible = 0.0;
-            for (Map<String, String> impuesto : impuestos) {
-                totalImpuestos += Double.parseDouble(impuesto.getOrDefault("monto_impuesto", "0.00"));
-                totalBaseImponible += Double.parseDouble(impuesto.getOrDefault("base_imponible", "0.00"));
+            for(Map<String, String> impuesto : impuestos){
+                totalImpuestos += parseDoubleSafe(impuesto.getOrDefault("monto_Impuesto", "0.00"), 0.0);
+                totalBaseImponible += parseDoubleSafe(impuesto.getOrDefault("base_imponible", "0.00"), 0.0);
             }
 
             result.putIfAbsent("genera_documento", "FALSE");
@@ -525,9 +529,13 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             result.putIfAbsent("workstation_nombre", "");
             result.putIfAbsent("empleado", "");
             result.putIfAbsent("impuestos_json", null);
+
             ObjectMapper mapper = new ObjectMapper();
+            result.put("total_impuestos", String.format(Locale.US, "%.2f", totalImpuestos));
+            result.put("base_imponible_total", String.format(Locale.US, "%.2f", totalBaseImponible));
             result.put("impuestos_json", mapper.writeValueAsString(impuestos));
-            result.put("items_json", generarJsonItems(productos));
+            result.put("items_json", mapper.writeValueAsString(productos));
+
             List<Map<String, Object>> pagos = extraerTenderMediaList(doc);
             result.put("pagos_json", mapper.writeValueAsString(pagos));
 

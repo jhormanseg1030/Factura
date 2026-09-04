@@ -10,5 +10,13 @@
   "guid:082acaa0b3f74e3e8b4c979c2ce5713400055008" : {
     "numero_factura_completo" : "EVI3",
     "cufe" : "43150416bf3d10aa0a47215c29609c40855a0b8cd56e652afcf1eb3d0c1eeb792d74b25614ea10d777b60f0abcea5b6a"
+  },
+  "guid:1fdf467993b74a6ead730780f3c6d17600017401" : {
+    "numero_factura_completo" : "P660500",
+    "cufe" : "cb68c111ed14cd97f5bbb8ca1d089e1a29c0bcce3d7a28b933fec414535f6a8d6dbb1129df5bedb2e77f321bf13ac048"
+  },
+  "guid:969b2e8f24244426830c01bd4fd8505000055008" : {
+    "numero_factura_completo" : "EVI660501",
+    "cufe" : "9599e25da298c141d86b397b4b42002d62e40c6ca877fa5d828f88a4efc3810a3bd8426d4ccbb1e2c3cf02d912bda7ed"
   }
 }
