@@ -15,8 +15,8 @@ import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -105,7 +105,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 logger.info("Vigilando la carpeta: {}", dirInbox);
 
                 while(true){
-                    WatchKey key = watchService.take(); //esto espera a que llegue la informacion
+                    WatchKey key = watchService.take(); 
+                    //esto espera a que llegue la informacion
 
                     for(WatchEvent<?> event : key.pollEvents()){
                         WatchEvent.Kind<?> kind = event.kind();
@@ -142,14 +143,14 @@ public class MiddlewareSimphony implements CommandLineRunner {
             Map<String, String> itemFields = new HashMap<>();
 
             for(int j = 0; j < fields.getLength(); j++){
-                Element field = (Element) fields.item(i);
+                Element field = (Element) fields.item(j);
                 String name = field.getAttribute("field");
                 String value = field.getAttribute("value");
                 if(name != null && !name.isBlank()){
                     itemFields.put(name, value == null ? "" : value);
                 }
             }
-            String nombreProducto = itemFields.getOrDefault("Name ", "");
+            String nombreProducto = itemFields.getOrDefault("Name", "");
             if(nombreProducto.isBlank()){
                 continue;
             }
@@ -176,7 +177,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
             itemMap.put("nombre", nombreProducto);
             itemMap.put("descripcion", nombreProducto);
             itemMap.put("unidad_medida", "94");
-            itemMap.put("cantida", String.format(Locale.US, "%.2f", cantidad));
+            itemMap.put("cantidad", String.format(Locale.US, "%.2f", cantidad));
+            itemMap.put("Total", String.format(Locale.US, "%.2f", totalItem));
             itemMap.put("precio", String.format(Locale.US, "%.2f", precioUnitatioSimImpuesto));
             itemMap.put("descuento", "0.00");
             itemMap.put("subtotal", String.format(Locale.US, "%.2f", baseImponible));
@@ -348,7 +350,6 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
         NodeList fields = tenderElement.getElementsByTagName("OraPayloadEntityField");
         Map<String, String> campos = new HashMap<>();
 
-        // Extraer todos los campos en un mapa
         for (int j = 0; j < fields.getLength(); j++) {
             Element field = (Element) fields.item(j);
             String name = field.getAttribute("field");
@@ -358,7 +359,6 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             }
         }
 
-        // Extraer valores con fallbacks
         String objectNumberStr = campos.getOrDefault("ObjectNumber", "0");
         String montoStr = campos.getOrDefault("CurrencyAmount", campos.getOrDefault("Total", "0.00"));
         String tipStr = campos.getOrDefault("ChargeTip", campos.getOrDefault("Tip", "0.00"));
@@ -368,7 +368,6 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
         logger.debug("TenderMedia [{}] - ObjectNumber: {}, Monto: {}, Tip: {}, Nombre: {}", 
             i, objectNumberStr, montoStr, tipStr, nombrePago);
 
-        // Crear objeto de pago solo si hay monto
         if (!montoStr.isBlank() && !montoStr.equals("0.00")) {
             Map<String, Object> pagoMap = new LinkedHashMap<>();
 
@@ -509,7 +508,7 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             double totalImpuestos = 0.0;
             double totalBaseImponible = 0.0;
             for(Map<String, String> impuesto : impuestos){
-                totalImpuestos += parseDoubleSafe(impuesto.getOrDefault("monto_Impuesto", "0.00"), 0.0);
+                totalImpuestos += parseDoubleSafe(impuesto.getOrDefault("monto_impuesto", "0.00"), 0.0);
                 totalBaseImponible += parseDoubleSafe(impuesto.getOrDefault("base_imponible", "0.00"), 0.0);
             }
 
@@ -558,13 +557,14 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             String condicionVenta = datos.getOrDefault("condicion_venta", "N/A");
             String codigoFiscal = datos.getOrDefault("codigo_fiscal", "N/A");
             String guid = datos.getOrDefault("guid_transaccion", "N/A");
+            String fechaFac = obtenerFechaCufe(timestamp);
+            String horaFac = obtenerHoraCufe(timestamp);
 
             double valFacNum = Double.parseDouble(datos.getOrDefault("base_imponible_total", "0.00").replace(',', '.'));
-            double totalNum = Double.parseDouble(datos.getOrDefault("total", "0.00").replace(',', '.'));
-
             double ivaNum = 0.00;
             double incNum = Double.parseDouble(datos.getOrDefault("total_impuestos", "0.00").replace(',', '.'));
             double icaNum = 0.00;
+            double totalFiscalNum = valFacNum + ivaNum + incNum + icaNum;
 
             String claveTecnicaXml = datos.getOrDefault("ClaveTecnica", "");
             String nitEmisor = datos.getOrDefault("RucEmisor", "8605108638");
@@ -629,25 +629,25 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             if("TRUE".equalsIgnoreCase(generaDoc)){
                 if (registroExistente == null) {
                     numeroFacturaCompleto = prefijoFac + facturaCounterService.obtenerSiguienteNumero();
-                    String fechaFac = obtenerFechaCufe(timestamp);
-                    String horaFac = obtenerHoraCufe(timestamp);
                     String numAdquiriente = cliente == null
                         ? identificacionConsumidorFinal
                         : cliente.path("identificacion").asText(identificacionConsumidorFinal);
+
                     cufeGenerado = CufeServices.generarCufe(numeroFacturaCompleto, fechaFac, horaFac, valFacNum, "01", ivaNum,
-                        "04", incNum, "00", icaNum, totalNum, nitEmisor, numAdquiriente, claveTecnicaXml, tipoAmbiente);
+                        "04", incNum, "03", icaNum, totalFiscalNum, nitEmisor, numAdquiriente, claveTecnicaXml, tipoAmbiente);
                 }
                 String urlQr = generarUrlQr(cufeGenerado);
                 logger.info("• Url Qr: {}", urlQr);
 
                 Map<String, Object> jsonMap = new LinkedHashMap<>();
                 jsonMap.put("numero_factura", numeroFacturaCompleto);
-                jsonMap.put("fecha_procesamiento", LocalDateTime.now().toString());
+                jsonMap.put("fecha_procesamiento", LocalDate.now().toString());
                 jsonMap.put("numero_ticket", datos.get("numero_ticket"));
                 jsonMap.put("check_id", checkId);
                 jsonMap.put("harmony_id", harmonyId);
                 jsonMap.put("caja_wsid", wsId);
-                jsonMap.put("fecha_hora", timestamp);
+                jsonMap.put("hora_hora", horaFac);
+                jsonMap.put("fecha_hora", fechaFac+ "T" + horaFac);
                 jsonMap.put("condicion_venta", condicionVenta);
                 jsonMap.put("codigo_fiscal", codigoFiscal);
                 jsonMap.put("guid_transaccion", guid);
@@ -658,8 +658,11 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("ResolucionIni", datos.getOrDefault("ResolucionIni", "N/A"));
                 jsonMap.put("ResolucionFin", datos.getOrDefault("ResolucionFin", "N/A"));
                 jsonMap.put("FechaResolucion", datos.getOrDefault("FechaResolucion", "N/A"));
-                jsonMap.put("propina", datos.getOrDefault("propina", "N/A"));
-                jsonMap.put("total", datos.getOrDefault("total", "N/A"));
+                jsonMap.put("subtotal_base", String.format(Locale.US, "%.2f", valFacNum));
+                jsonMap.put("total_impuesto", String.format(Locale.US, "%.2f", incNum));
+                jsonMap.put("total_fiscal", String.format(Locale.US, "%.2f", totalFiscalNum));
+                jsonMap.put("propina", datos.getOrDefault("propina", "0.00"));
+                jsonMap.put("total", datos.getOrDefault("total", "0.00"));
                 jsonMap.put("restaurante", datos.getOrDefault("restaurante", "N/A"));
                 jsonMap.put("workstation", datos.getOrDefault("workstation_nombre", "N/A"));
                 jsonMap.put("empleado", datos.getOrDefault("empleado", "N/A"));
@@ -741,17 +744,58 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
     }
 
     private String obtenerFechaCufe(String timestamp) {
-        return timestamp.length() >= 10 ? timestamp.substring(0, 10) : timestamp;
+        if(timestamp == null || timestamp.isBlank()){
+            return LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy"));
+        }
+        try{
+            if (timestamp.contains("T")) {
+                timestamp = timestamp.split("T")[0];
+            }
+
+            if(timestamp.contains("/")){
+                String fechaParte = timestamp.split(" ")[0];
+                String [] partes = fechaParte.split("/");
+                if(partes.length == 3){
+                    return String.format("%s-%02d-%02d", partes[2], Integer.parseInt(partes[0]), Integer.parseInt(partes[1]));
+                }
+            }
+            if (timestamp.length() >= 10) {
+                return timestamp.substring(0, 10); 
+            }
+        } catch(Exception e){
+            logger.warn("Error al extraer fecha del timestamp: {}", timestamp);
+        }
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("MM-dd-yyyy"));
     }
 
-    private String obtenerHoraCufe(String timestamp) {
-        try {
-            return OffsetDateTime.parse(timestamp)
-                .format(DateTimeFormatter.ofPattern("HH:mm:ssXXX"));
-        } catch (Exception e) {
-            return timestamp.length() >= 19 ? timestamp.substring(11, 19) : timestamp;
+    private String obtenerHoraCufe(String timestamp){
+        if(timestamp == null || timestamp.isBlank()){
+            return LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss-05:00"));
         }
+        try{
+            String horaExtraida = "";
+
+            if(timestamp.contains("T")){
+                horaExtraida = timestamp.split("T")[1];
+            }else if( timestamp.contains(" ")){
+                horaExtraida = timestamp.split(" ")[1];
+            }else{
+                horaExtraida = timestamp;
+            }
+
+            if(horaExtraida.length() >= 8){
+                horaExtraida = horaExtraida.substring(0, 8);
+            }
+
+            if(horaExtraida.matches("\\d{2}:\\d{2}:\\d{2}")){
+                return horaExtraida + "-05:00";
+            }
+        } catch(Exception e){
+            logger.warn("Error al extraer hora del timestamp: {}", timestamp, e);
+        }
+        return LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss-05:00"));
     }
+
 
     private void enviarHttpPOST(String jsonPayload){
         try{
