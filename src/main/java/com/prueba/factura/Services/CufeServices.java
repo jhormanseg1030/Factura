@@ -3,8 +3,7 @@ package com.prueba.factura.Services;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.util.Locale;
 
 public class CufeServices {
     
@@ -29,11 +28,12 @@ public class CufeServices {
         String ciTec,
         String tipoAmbiente){
 
-        String valFacStr = truncarDosDecimales(valFac);
-        String valIvaStr = truncarDosDecimales(valIva);
-        String valIncStr = truncarDosDecimales(valInc);
-        String valIcaStr = truncarDosDecimales(valIca);
-        String valTotalStr = truncarDosDecimales(valTotal);
+        // DIAN: valores monetarios enteros con dos decimales (.00)
+        String valFacStr = formatoEnteroCufe(valFac);
+        String valIvaStr = formatoEnteroCufe(valIva);
+        String valIncStr = formatoEnteroCufe(valInc);
+        String valIcaStr = formatoEnteroCufe(valIca);
+        String valTotalStr = formatoEnteroCufe(valTotal);
 
         StringBuilder cufeBuilder = new StringBuilder();
         cufeBuilder.append(numFac)
@@ -52,8 +52,9 @@ public class CufeServices {
         return sha384Hex(cufeBuilder.toString());
     }
 
-    private static String truncarDosDecimales(double valor) {
-        return BigDecimal.valueOf(valor).setScale(2, RoundingMode.DOWN).toPlainString();
+    private static String formatoEnteroCufe(double valor) {
+        long entero = Math.round(valor);
+        return String.format(Locale.US, "%.2f", (double) entero);
     }
 
     private static String soloDigitos(String valor) {
