@@ -172,15 +172,22 @@ public class MiddlewareSimphony implements CommandLineRunner {
             String porcImpuesto = itemFields.getOrDefault("DE_SATCOM_Porc_Impuestos", "0.00");
             String nombreImpuesto = itemFields.getOrDefault("DE_SATCOM_NombreImpuesto", "IVA");
 
-            double totalItem = parseDoubleSafe(totalItemStr.replace(',', '.'), 0.0);
+            long totalItem = redondearEntero(parseDoubleSafe(totalItemStr.replace(',', '.'), 0.0));
             double cantidad = parseDoubleSafe(cantidadStr.replace(',', '.'), 0.0);
             if(cantidad <= 0) cantidad = 1.0;
             double porcentajeImp = parseDoubleSafe(porcImpuesto.replace(',', '.'), 0.0);
 
-            //metodo matematico
-            double baseImponible = porcentajeImp > 0 ?(totalItem / (1.0 + (porcentajeImp / 100.00))) : totalItem;
-            double valorImpuesto = baseImponible * (porcentajeImp / 100.0);
-            double precioUnitatioSimImpuesto = baseImponible / cantidad;
+            // Enteros: base + impuesto = total (evita FAU04 por centavos)
+            long baseImponible;
+            long valorImpuesto;
+            if (porcentajeImp > 0) {
+                baseImponible = redondearEntero(totalItem / (1.0 + (porcentajeImp / 100.0)));
+                valorImpuesto = totalItem - baseImponible;
+            } else {
+                baseImponible = totalItem;
+                valorImpuesto = 0L;
+            }
+            long precioUnitarioSinImpuesto = redondearEntero(baseImponible / cantidad);
 
             Map<String, Object> itemMap = new LinkedHashMap<>();
             itemMap.put("codigo", codigo);
@@ -188,10 +195,10 @@ public class MiddlewareSimphony implements CommandLineRunner {
             itemMap.put("descripcion", nombreProducto);
             itemMap.put("unidad_medida", "94");
             itemMap.put("cantidad", String.format(Locale.US, "%.2f", cantidad));
-            itemMap.put("Total", String.format(Locale.US, "%.2f", totalItem));
-            itemMap.put("precio", String.format(Locale.US, "%.2f", precioUnitatioSimImpuesto));
+            itemMap.put("Total", formatoDineroEntero(totalItem));
+            itemMap.put("precio", formatoDineroEntero(precioUnitarioSinImpuesto));
             itemMap.put("descuento", "0.00");
-            itemMap.put("subtotal", String.format(Locale.US, "%.2f", baseImponible));
+            itemMap.put("subtotal", formatoDineroEntero(baseImponible));
 
             List<Map<String, String>> impuestosItem = new ArrayList<>();
             if(!codImpuesto.isBlank() && porcentajeImp > 0){
@@ -199,8 +206,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 impMap.put("codigo", codImpuesto);
                 impMap.put("nombre", nombreImpuesto.isBlank() ? "IVA" : nombreImpuesto);
                 impMap.put("porcentaje", String.format(Locale.US, "%.2f", porcentajeImp));
-                impMap.put("base", String.format(Locale.US, "%.2f", baseImponible));
-                impMap.put("valor", String.format(Locale.US, "%.2f", valorImpuesto));
+                impMap.put("base", formatoDineroEntero(baseImponible));
+                impMap.put("valor", formatoDineroEntero(valorImpuesto));
                 impuestosItem.add(impMap);
             }
             itemMap.put("impuestos", impuestosItem);
@@ -208,6 +215,61 @@ public class MiddlewareSimphony implements CommandLineRunner {
             productos.add(itemMap);
         }
         return productos;
+    }
+
+    /**
+     * Consolida impuestos del encabezado sumando las bases/valores enteros de cada línea.
+     * Garantiza FAU04: base_imponible total = suma de bases de detalle.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, String>> consolidarImpuestosDesdeProductos(List<Map<String, Object>> productos) {
+        Map<String, Map<String, Object>> agrupado = new LinkedHashMap<>();
+
+        for (Map<String, Object> producto : productos) {
+            Object impuestosObj = producto.get("impuestos");
+            if (!(impuestosObj instanceof List<?> impuestosList)) {
+                continue;
+            }
+            for (Object raw : impuestosList) {
+                if (!(raw instanceof Map<?, ?> impRaw)) {
+                    continue;
+                }
+                Map<String, String> imp = (Map<String, String>) impRaw;
+                String codigo = imp.getOrDefault("codigo", "");
+                String porcentaje = imp.getOrDefault("porcentaje", "0.00");
+                if (codigo.isBlank()) {
+                    continue;
+                }
+                String clave = codigo + "_" + porcentaje;
+                Map<String, Object> acumulado = agrupado.computeIfAbsent(clave, k -> {
+                    Map<String, Object> nuevo = new LinkedHashMap<>();
+                    nuevo.put("codigo", codigo);
+                    nuevo.put("nombre", imp.getOrDefault("nombre", ""));
+                    nuevo.put("porcentaje", porcentaje);
+                    nuevo.put("base", 0L);
+                    nuevo.put("monto", 0L);
+                    return nuevo;
+                });
+                long base = redondearEntero(parseDoubleSafe(imp.getOrDefault("base", "0"), 0.0));
+                long valor = redondearEntero(parseDoubleSafe(imp.getOrDefault("valor", "0"), 0.0));
+                acumulado.put("base", (long) acumulado.get("base") + base);
+                acumulado.put("monto", (long) acumulado.get("monto") + valor);
+            }
+        }
+
+        List<Map<String, String>> lista = new ArrayList<>();
+        int contador = 1;
+        for (Map<String, Object> valores : agrupado.values()) {
+            Map<String, String> impuestoFinal = new LinkedHashMap<>();
+            impuestoFinal.put("codigo_impuesto", String.valueOf(valores.get("codigo")));
+            impuestoFinal.put("nombre_impuesto", String.valueOf(valores.get("nombre")));
+            impuestoFinal.put("numero_impuesto", String.valueOf(contador++));
+            impuestoFinal.put("porcentaje_impuesto", String.valueOf(valores.get("porcentaje")));
+            impuestoFinal.put("base_imponible", formatoDineroEntero((long) valores.get("base")));
+            impuestoFinal.put("monto_impuesto", formatoDineroEntero((long) valores.get("monto")));
+            lista.add(impuestoFinal);
+        }
+        return lista;
     }
 
     private static List<Map<String, String>> extraerImpuestos(Document doc, String subtotalFacturaStr){
@@ -241,8 +303,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 continue;
             }
 
+            long total = 0L;
             double porcentaje = 0.0;
-            double total = 0.0;
             String taxableStr = "";
             String taxAmountStr = "";
 
@@ -267,19 +329,27 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
             try{
                 porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
-                total = Double.parseDouble(totalItemStr.replace(',', '.'));
+                total = redondearEntero(Double.parseDouble(totalItemStr.replace(',', '.')));
             } catch (NumberFormatException e) {
                 continue;
             }
 
-            double baseImponibleItem;
-            double montoImpuestoItem;
+            long baseImponibleItem;
+            long montoImpuestoItem;
             if (!taxableStr.isBlank() && !taxAmountStr.isBlank()) {
-                baseImponibleItem = Double.parseDouble(taxableStr.replace(',', '.'));
-                montoImpuestoItem = Double.parseDouble(taxAmountStr.replace(',', '.'));
-            } else {
-                baseImponibleItem = total /(1.0 + (porcentaje / 100.0));
+                baseImponibleItem = redondearEntero(Double.parseDouble(taxableStr.replace(',', '.')));
+                montoImpuestoItem = redondearEntero(Double.parseDouble(taxAmountStr.replace(',', '.')));
+                // Preferir coherencia total = base + impuesto cuando el Total del ítem es confiable
+                if (total > 0 && porcentaje > 0) {
+                    baseImponibleItem = redondearEntero(total / (1.0 + (porcentaje / 100.0)));
+                    montoImpuestoItem = total - baseImponibleItem;
+                }
+            } else if (porcentaje > 0) {
+                baseImponibleItem = redondearEntero(total / (1.0 + (porcentaje / 100.0)));
                 montoImpuestoItem = total - baseImponibleItem;
+            } else {
+                baseImponibleItem = total;
+                montoImpuestoItem = 0L;
             }
 
             String claveUnica = codigo + "_" + porcentajeStr;
@@ -312,14 +382,14 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
             try {
                 double porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
-                double total = Double.parseDouble(subtotalFacturaStr.replace(',', '.'));
+                long total = redondearEntero(Double.parseDouble(subtotalFacturaStr.replace(',', '.')));
                 if (!codigo.isEmpty() && porcentaje > 0 && total > 0) {
-                    double baseImponible = total / (1.0 + (porcentaje / 100.0));
-                    double montoImpuesto = total - baseImponible;
+                    long baseImponible = redondearEntero(total / (1.0 + (porcentaje / 100.0)));
+                    long montoImpuesto = total - baseImponible;
                     String claveUnica = codigo + "_" + porcentajeStr;
                     Map<String, Double> valores = new HashMap<>();
-                    valores.put("base", baseImponible);
-                    valores.put("monto", montoImpuesto);
+                    valores.put("base", (double) baseImponible);
+                    valores.put("monto", (double) montoImpuesto);
                     valores.put("porcentaje", porcentaje);
                     mapaAgrupado.put(claveUnica, valores);
                     nombreImpuestos.put(claveUnica, nombre);
@@ -342,8 +412,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
             impuestoFinal.put("nombre_impuesto", nombreImpuesto);
             impuestoFinal.put("numero_impuesto", String.valueOf(contador++));
             impuestoFinal.put("porcentaje_impuesto", String.format(Locale.US ,"%.2f", valores.get("porcentaje")));
-            impuestoFinal.put("base_imponible", String.format(Locale.US, "%.2f", valores.get("base")));
-            impuestoFinal.put("monto_impuesto", String.format(Locale.US, "%.2f", valores.get("monto")));
+            impuestoFinal.put("base_imponible", formatoDineroEntero(redondearEntero(valores.get("base"))));
+            impuestoFinal.put("monto_impuesto", formatoDineroEntero(redondearEntero(valores.get("monto"))));
 
             listaImpuestosLimpia.add(impuestoFinal);
         }
@@ -382,8 +452,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             Map<String, Object> pagoMap = new LinkedHashMap<>();
 
             int tenderMediaId = parseIntSafe(objectNumberStr, 0);
-            double tenderAmount = parseDoubleSafe(montoStr, 0.00);
-            double tipAmount = parseDoubleSafe(tipStr, 0.00);
+            long tenderAmount = redondearEntero(parseDoubleSafe(montoStr, 0.00));
+            long tipAmount = redondearEntero(parseDoubleSafe(tipStr, 0.00));
 
             pagoMap.put("tenderMediaId", tenderMediaId);
             pagoMap.put("tenderName", nombrePago);
@@ -510,16 +580,43 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             //Propina 
             List<Map<String, Object>> productos = extraerProductos(doc);
             String propinaRaw = result.getOrDefault("propina", "0.00");
-            double propinaNum = parseDoubleSafe(propinaRaw.replace(',', '.'), 0.0);
-            result.put("propina", String.format(Locale.US, "%.2f", propinaNum));
+            long propinaNum = redondearEntero(parseDoubleSafe(propinaRaw.replace(',', '.'), 0.0));
+            result.put("propina", formatoDineroEntero(propinaNum));
 
-            List<Map<String, String>> impuestos = extraerImpuestos(doc, result.getOrDefault("subtotal", "0.00"));
+            if (result.containsKey("total")) {
+                result.put("total", formatoDineroEntero(redondearEntero(
+                    parseDoubleSafe(result.get("total").replace(',', '.'), 0.0))));
+            }
+            if (result.containsKey("subtotal")) {
+                result.put("subtotal", formatoDineroEntero(redondearEntero(
+                    parseDoubleSafe(result.get("subtotal").replace(',', '.'), 0.0))));
+            }
 
-            double totalImpuestos = 0.0;
-            double totalBaseImponible = 0.0;
+            // Preferir suma de líneas (enteros) para FAU04; fallback al XML si no hay ítems gravados
+            List<Map<String, String>> impuestos = consolidarImpuestosDesdeProductos(productos);
+            if (impuestos.isEmpty()) {
+                impuestos = extraerImpuestos(doc, result.getOrDefault("subtotal", "0.00"));
+            }
+
+            if (!productos.isEmpty()) {
+                Map<String, Object> primero = productos.get(0);
+                result.putIfAbsent("producto", String.valueOf(primero.getOrDefault("nombre", "")));
+                String cantidadResumen = String.valueOf(primero.getOrDefault("cantidad", "1"));
+                if (cantidadResumen.endsWith(".00")) {
+                    cantidadResumen = cantidadResumen.substring(0, cantidadResumen.length() - 3);
+                }
+                result.putIfAbsent("cantidad", cantidadResumen);
+                // Precio unitario de resumen: Total del ítem (como en Simphony UnitPrice/Total)
+                result.putIfAbsent("precio_unitario", String.valueOf(primero.getOrDefault("Total",
+                    primero.getOrDefault("precio", ""))));
+                result.putIfAbsent("subtotal", String.valueOf(primero.getOrDefault("Total", "0.00")));
+            }
+
+            long totalImpuestos = 0L;
+            long totalBaseImponible = 0L;
             for(Map<String, String> impuesto : impuestos){
-                totalImpuestos += parseDoubleSafe(impuesto.getOrDefault("monto_impuesto", "0.00"), 0.0);
-                totalBaseImponible += parseDoubleSafe(impuesto.getOrDefault("base_imponible", "0.00"), 0.0);
+                totalImpuestos += redondearEntero(parseDoubleSafe(impuesto.getOrDefault("monto_impuesto", "0.00"), 0.0));
+                totalBaseImponible += redondearEntero(parseDoubleSafe(impuesto.getOrDefault("base_imponible", "0.00"), 0.0));
             }
 
             result.putIfAbsent("genera_documento", "FALSE");
@@ -530,8 +627,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             result.putIfAbsent("cantidad", "");
             result.putIfAbsent("precio_unitario", "");
             result.putIfAbsent("subtotal", "");
-            result.put("total_impuestos", String.format(Locale.US, "%.2f", totalImpuestos));
-            result.put("base_imponible_total", String.format(Locale.US, "%.2f", totalBaseImponible));
+            result.put("total_impuestos", formatoDineroEntero(totalImpuestos));
+            result.put("base_imponible_total", formatoDineroEntero(totalBaseImponible));
             result.putIfAbsent("propina", "");
             result.putIfAbsent("total", "");
             result.putIfAbsent("restaurante", "");
@@ -542,8 +639,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             result.putIfAbsent("RangoFin", "");
 
             ObjectMapper mapper = new ObjectMapper();
-            result.put("total_impuestos", String.format(Locale.US, "%.2f", totalImpuestos));
-            result.put("base_imponible_total", String.format(Locale.US, "%.2f", totalBaseImponible));
+            result.put("total_impuestos", formatoDineroEntero(totalImpuestos));
+            result.put("base_imponible_total", formatoDineroEntero(totalBaseImponible));
             result.put("impuestos_json", mapper.writeValueAsString(impuestos));
             result.put("items_json", mapper.writeValueAsString(productos));
 
@@ -572,9 +669,9 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             String fechaFac = obtenerFechaCufe(timestamp);
             String horaFac = obtenerHoraCufe(timestamp);
 
-            double valFacNum = Double.parseDouble(datos.getOrDefault("base_imponible_total", "0.00").replace(',', '.'));
+            double valFacNum = redondearEntero(Double.parseDouble(datos.getOrDefault("base_imponible_total", "0.00").replace(',', '.')));
             double ivaNum = 0.00;
-            double incNum = Double.parseDouble(datos.getOrDefault("total_impuestos", "0.00").replace(',', '.'));
+            double incNum = redondearEntero(Double.parseDouble(datos.getOrDefault("total_impuestos", "0.00").replace(',', '.')));
             double icaNum = 0.00;
             double totalFiscalNum = valFacNum + ivaNum + incNum + icaNum;
 
@@ -672,9 +769,9 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("FechaResolucion", datos.getOrDefault("FechaResolucion", "N/A"));
                 jsonMap.put("RangoIni", datos.getOrDefault("RangoIni", "N/A"));
                 jsonMap.put("RangoFin", datos.getOrDefault("RangoFin", "N/A"));
-                jsonMap.put("subtotal_base", String.format(Locale.US, "%.2f", valFacNum));
-                jsonMap.put("total_impuesto", String.format(Locale.US, "%.2f", incNum));
-                jsonMap.put("total_fiscal", String.format(Locale.US, "%.2f", totalFiscalNum));
+                jsonMap.put("subtotal_base", formatoDineroEntero(redondearEntero(valFacNum)));
+                jsonMap.put("total_impuesto", formatoDineroEntero(redondearEntero(incNum)));
+                jsonMap.put("total_fiscal", formatoDineroEntero(redondearEntero(totalFiscalNum)));
                 jsonMap.put("propina", datos.getOrDefault("propina", "0.00"));
                 jsonMap.put("total", datos.getOrDefault("total", "0.00"));
                 jsonMap.put("restaurante", datos.getOrDefault("restaurante", "N/A"));
@@ -853,6 +950,14 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             throw new IllegalArgumentException("El CUFE no puede estar vacio");
         }
         return "https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=" + cufe;
+    }
+
+    private static long redondearEntero(double valor) {
+        return Math.round(valor);
+    }
+
+    private static String formatoDineroEntero(long valor) {
+        return String.format(Locale.US, "%.2f", (double) valor);
     }
 
     private static int parseIntSafe(String value, int defaultValue) {

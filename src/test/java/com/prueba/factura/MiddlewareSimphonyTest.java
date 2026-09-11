@@ -99,8 +99,8 @@ class MiddlewareSimphonyTest {
                 assertTrue(factura.get("impuestos_json").contains("\"codigo_impuesto\":\"04\""));
                 assertTrue(factura.get("impuestos_json").contains("\"nombre_impuesto\":\"INC 8%\""));
                 assertTrue(factura.get("impuestos_json").contains("\"porcentaje_impuesto\":\"8.00\""));
-                assertTrue(factura.get("impuestos_json").contains("\"base_imponible\":\"92.59\""));
-                assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"7.41\""));
+                assertTrue(factura.get("impuestos_json").contains("\"base_imponible\":\"93.00\""));
+                assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"7.00\""));
 
                 Files.deleteIfExists(temporal);
         }
@@ -134,7 +134,7 @@ class MiddlewareSimphonyTest {
                 Map<String, String> factura = MiddlewareSimphony.extraerDatosFactura(temporal.toFile());
 
                 assertTrue(factura.get("impuestos_json").contains("\"base_imponible\":\"51111.00\""));
-                assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"4088.89\""));
+                assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"4089.00\""));
                 assertEquals("51111.00", factura.get("base_imponible_total"));
 
                 Files.deleteIfExists(temporal);
