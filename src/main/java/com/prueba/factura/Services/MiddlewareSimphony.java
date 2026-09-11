@@ -34,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -66,6 +67,15 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
     @Value("${app.cufe.registry.file:facturas_cufes.json}")
     private String cufeRegistryFile;
+
+    @Value ("${app.api.key}")
+    private String apiKey;
+
+    @Value ("${app.target.url}")
+    private String targetUrl;
+
+    @Value ("${app.emission.point.id}")
+    private String emissionPointId;
 
     @Autowired
     private FacturaCounterService facturaCounterService;
@@ -528,6 +538,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             result.putIfAbsent("workstation_nombre", "");
             result.putIfAbsent("empleado", "");
             result.putIfAbsent("impuestos_json", null);
+            result.putIfAbsent("RangoIni", "");
+            result.putIfAbsent("RangoFin", "");
 
             ObjectMapper mapper = new ObjectMapper();
             result.put("total_impuestos", String.format(Locale.US, "%.2f", totalImpuestos));
@@ -658,6 +670,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("ResolucionIni", datos.getOrDefault("ResolucionIni", "N/A"));
                 jsonMap.put("ResolucionFin", datos.getOrDefault("ResolucionFin", "N/A"));
                 jsonMap.put("FechaResolucion", datos.getOrDefault("FechaResolucion", "N/A"));
+                jsonMap.put("RangoIni", datos.getOrDefault("RangoIni", "N/A"));
+                jsonMap.put("RangoFin", datos.getOrDefault("RangoFin", "N/A"));
                 jsonMap.put("subtotal_base", String.format(Locale.US, "%.2f", valFacNum));
                 jsonMap.put("total_impuesto", String.format(Locale.US, "%.2f", incNum));
                 jsonMap.put("total_fiscal", String.format(Locale.US, "%.2f", totalFiscalNum));
@@ -676,7 +690,17 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("qr", urlQr);
                 jsonMap.put("qr_url", urlQr);
 
-                String jsonPayload = objectMapper.writeValueAsString(jsonMap);
+                Map<String, String> headers = new LinkedHashMap<>();
+                headers.put("Content-Type", "application/json");
+                headers.put("X-API-KEY", apiKey);
+                headers.put("X-Emission-Point-ID", emissionPointId != null ? emissionPointId : "");
+
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("targetUrl", targetUrl);
+                payload.put("headers", headers);
+                payload.put("body", jsonMap);
+
+                String jsonPayload = objectMapper.writeValueAsString(payload);
                 guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
                 enviarHttpPOST(jsonPayload);
             } else {
@@ -817,6 +841,9 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code:" + response.statusCode());
             }
             System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());
+        }catch(HttpStatusCodeException e){
+            logger.error("Error HTTP al enviar datos a la API: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            facturaPendienteService.guardarFacturaPendiente(jsonPayload, "HTTP Status code:" + e.getStatusCode());
         }catch(Exception e){
             logger.error("Error al enviar la solicitud Http POST guardando en cola pendiente", e);
             facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
