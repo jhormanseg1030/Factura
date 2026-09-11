@@ -1,6 +1,10 @@
 {
+  "guid:a5a8073367c84789bdcbf9043297a06300051854" : {
+    "numero_factura_completo" : "660501",
+    "cufe" : "b333e47b7ba6f6e2224cf93f4ea796e3acd5945cbead1df2ee8acfae3c1a26f7dcaaca75c113f636203f388169791c6f"
+  },
   "guid:1fdf467993b74a6ead730780f3c6d17600017401" : {
-    "numero_factura_completo" : "P660500",
-    "cufe" : "069db66f69e1f5b7d92c4f5fcb7cde9d91c7294760ffefaf88c42d3c5516348b07f2b88d7b67e39d39f8a78b7a8872a2"
+    "numero_factura_completo" : "P660504",
+    "cufe" : "1ccf1c838ef20a4b49b8be791597052a461d3d367c31613bc7fd31e793b026fc1cde026f533c606510724c328bb16892"
   }
 }

@@ -34,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -67,6 +68,15 @@ public class MiddlewareSimphony implements CommandLineRunner {
     @Value("${app.cufe.registry.file:facturas_cufes.json}")
     private String cufeRegistryFile;
 
+    @Value ("${app.api.key}")
+    private String apiKey;
+
+    @Value ("${app.target.url}")
+    private String targetUrl;
+
+    @Value ("${app.emission.point.id}")
+    private String emissionPointId;
+
     @Autowired
     private FacturaCounterService facturaCounterService;
 
@@ -77,7 +87,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
     private ComunicadorBase comunicadorBase;
 
     private final HttpClient client = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_2)
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
@@ -528,6 +538,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             result.putIfAbsent("workstation_nombre", "");
             result.putIfAbsent("empleado", "");
             result.putIfAbsent("impuestos_json", null);
+            result.putIfAbsent("RangoIni", "");
+            result.putIfAbsent("RangoFin", "");
 
             ObjectMapper mapper = new ObjectMapper();
             result.put("total_impuestos", String.format(Locale.US, "%.2f", totalImpuestos));
@@ -658,6 +670,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("ResolucionIni", datos.getOrDefault("ResolucionIni", "N/A"));
                 jsonMap.put("ResolucionFin", datos.getOrDefault("ResolucionFin", "N/A"));
                 jsonMap.put("FechaResolucion", datos.getOrDefault("FechaResolucion", "N/A"));
+                jsonMap.put("RangoIni", datos.getOrDefault("RangoIni", "N/A"));
+                jsonMap.put("RangoFin", datos.getOrDefault("RangoFin", "N/A"));
                 jsonMap.put("subtotal_base", String.format(Locale.US, "%.2f", valFacNum));
                 jsonMap.put("total_impuesto", String.format(Locale.US, "%.2f", incNum));
                 jsonMap.put("total_fiscal", String.format(Locale.US, "%.2f", totalFiscalNum));
@@ -799,24 +813,35 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
     private void enviarHttpPOST(String jsonPayload){
         try{
-            HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(apiUrl))
+            String destino = (targetUrl != null && !targetUrl.isBlank()) ? targetUrl : apiUrl;
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(destino))
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/json")
             .header("User-Agent", "FacturaApp/1.0")
+            .header("X-API-KEY", apiKey != null ? apiKey : "");
+
+            if (emissionPointId != null && !emissionPointId.isBlank()) {
+                requestBuilder.header("X-Emission-Point-ID", emissionPointId);
+            }
+
+            HttpRequest request = requestBuilder
             .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
             .build();
 
-            logger.info("Enviando datos a la API");
+            logger.info("Enviando datos a la API: {}", destino);
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if(response.statusCode() >= 200 && response.statusCode() < 300) {
-                logger.info("Respuesta exitosa");
+                logger.info("Respuesta exitosa: {}", response.statusCode());
             } else {
-                logger.warn("Respuesta con estado: {}", response.statusCode());
+                logger.warn("Respuesta con estado: {} body: {}", response.statusCode(), response.body());
                 facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code:" + response.statusCode());
             }
             System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());
+        }catch(HttpStatusCodeException e){
+            logger.error("Error HTTP al enviar datos a la API: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            facturaPendienteService.guardarFacturaPendiente(jsonPayload, "HTTP Status code:" + e.getStatusCode());
         }catch(Exception e){
             logger.error("Error al enviar la solicitud Http POST guardando en cola pendiente", e);
             facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
