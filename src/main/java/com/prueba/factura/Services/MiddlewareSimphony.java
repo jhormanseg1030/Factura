@@ -87,7 +87,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
     private ComunicadorBase comunicadorBase;
 
     private final HttpClient client = HttpClient.newBuilder()
-            .version(HttpClient.Version.HTTP_2)
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
@@ -690,17 +690,7 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("qr", urlQr);
                 jsonMap.put("qr_url", urlQr);
 
-                Map<String, String> headers = new LinkedHashMap<>();
-                headers.put("Content-Type", "application/json");
-                headers.put("X-API-KEY", apiKey);
-                headers.put("X-Emission-Point-ID", emissionPointId != null ? emissionPointId : "");
-
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("targetUrl", targetUrl);
-                payload.put("headers", headers);
-                payload.put("body", jsonMap);
-
-                String jsonPayload = objectMapper.writeValueAsString(payload);
+                String jsonPayload = objectMapper.writeValueAsString(jsonMap);
                 guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
                 enviarHttpPOST(jsonPayload);
             } else {
@@ -823,21 +813,29 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
     private void enviarHttpPOST(String jsonPayload){
         try{
-            HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(apiUrl))
+            String destino = (targetUrl != null && !targetUrl.isBlank()) ? targetUrl : apiUrl;
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(destino))
             .timeout(Duration.ofSeconds(10))
             .header("Content-Type", "application/json")
             .header("User-Agent", "FacturaApp/1.0")
+            .header("X-API-KEY", apiKey != null ? apiKey : "");
+
+            if (emissionPointId != null && !emissionPointId.isBlank()) {
+                requestBuilder.header("X-Emission-Point-ID", emissionPointId);
+            }
+
+            HttpRequest request = requestBuilder
             .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
             .build();
 
-            logger.info("Enviando datos a la API");
+            logger.info("Enviando datos a la API: {}", destino);
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if(response.statusCode() >= 200 && response.statusCode() < 300) {
-                logger.info("Respuesta exitosa");
+                logger.info("Respuesta exitosa: {}", response.statusCode());
             } else {
-                logger.warn("Respuesta con estado: {}", response.statusCode());
+                logger.warn("Respuesta con estado: {} body: {}", response.statusCode(), response.body());
                 facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code:" + response.statusCode());
             }
             System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());

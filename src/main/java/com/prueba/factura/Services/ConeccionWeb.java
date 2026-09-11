@@ -27,6 +27,12 @@ public class ConeccionWeb {
     
     @Value("${app.webhook.url}")
     private String url;
+
+    @Value("${app.api.key:}")
+    private String apiKey;
+
+    @Value("${app.emission.point.id:}")
+    private String emissionPointId;
     
     private final RestTemplate restTemplate;
 
@@ -67,6 +73,12 @@ public class ConeccionWeb {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.add("User-Agent", "FacturaApp/1.0");
+            if (apiKey != null && !apiKey.isBlank()) {
+                headers.add("X-API-KEY", apiKey);
+            }
+            if (emissionPointId != null && !emissionPointId.isBlank()) {
+                headers.add("X-Emission-Point-ID", emissionPointId);
+            }
 
             HttpEntity<FacturaDto> request = new HttpEntity<>(factura, headers);
 

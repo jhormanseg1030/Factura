@@ -16,16 +16,29 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 @Component
 public class ReintentarFacturasJob {
 
     private static final Logger logger = LoggerFactory.getLogger(ReintentarFacturasJob.class);
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Autowired
     private FacturaPendienteService facturaPendienteService;
 
     @Value("${app.webhook.url}")
     private String apiUrl;
+
+    @Value("${app.target.url:${app.webhook.url}}")
+    private String targetUrl;
+
+    @Value("${app.api.key}")
+    private String apiKey;
+
+    @Value("${app.emission.point.id:}")
+    private String emissionPointId;
 
     @Scheduled(fixedDelayString = "${app.reintento.delay:60000}")
     public void reintentarFacturasPendientes() {
@@ -78,23 +91,50 @@ public class ReintentarFacturasJob {
 
     private boolean enviarHTTP(String jsonPayload) {
         try {
+            String body = extraerBodyFactura(jsonPayload);
+            String destino = (targetUrl != null && !targetUrl.isBlank()) ? targetUrl : apiUrl;
+
             HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_2)
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
 
-            HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(apiUrl))
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(destino))
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json")
                 .header("User-Agent", "FacturaApp/1.0")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                .header("X-API-KEY", apiKey != null ? apiKey : "");
+
+            if (emissionPointId != null && !emissionPointId.isBlank()) {
+                requestBuilder.header("X-Emission-Point-ID", emissionPointId);
+            }
+
+            HttpRequest request = requestBuilder
+                .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            return response.statusCode() >= 200 && response.statusCode() < 300;
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                logger.warn("Reintento falló con status {} body: {}", response.statusCode(), response.body());
+                return false;
+            }
+            return true;
         } catch (Exception e) {
+            logger.warn("Error en reintento HTTP: {}", e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Soporta payloads antiguos con wrapper {targetUrl, headers, body}
+     * y payloads nuevos que ya son el body de la factura.
+     */
+    private String extraerBodyFactura(String jsonPayload) throws Exception {
+        JsonNode root = objectMapper.readTree(jsonPayload);
+        if (root.has("body") && (root.has("headers") || root.has("targetUrl"))) {
+            return objectMapper.writeValueAsString(root.get("body"));
+        }
+        return jsonPayload;
     }
 }
