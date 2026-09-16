@@ -59,7 +59,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
     @Value("${app.webhook.url}")
     private String apiUrl;
 
-    @Value("${app.dian.ambiente:2}")
+    @Value("${app.dian.ambiente:1}")
     private String tipoAmbiente;
 
     @Value("${app.cliente.consumidor-final.identificacion:2222222222}")
@@ -514,6 +514,23 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 if (name == null || name.isBlank()) {
                     continue;
                 }
+
+                if ("CreditNoteNumber".equals(name)) {
+                    result.putIfAbsent("CreditNoteNumber", value == null ? "": value);
+                }
+
+                if("CreditNoteInvoiceDate".equals(name)){
+                    result.putIfAbsent("CreditNoteInvoiceDate", value == null ? "": value);
+                }
+
+                if("CreditNoteReason".equals(name)){
+                    result.putIfAbsent("CreditNoteReason", value ==null ? "": value);
+                }
+
+                if("DocumentType".equals(name)){
+                    result.putIfAbsent("DocumentType", value == null ? "": value);
+                }
+
                 if ("CheckSubtotal".equals(name)) {
                     result.putIfAbsent("subtotal", value == null ? "" : value);
                 }
@@ -637,6 +654,10 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             result.putIfAbsent("impuestos_json", null);
             result.putIfAbsent("RangoIni", "");
             result.putIfAbsent("RangoFin", "");
+            result.putIfAbsent("CreditNoteNumber", "");
+            result.putIfAbsent("CreditNoteInvoiceDate", "");
+            result.putIfAbsent("CreditNoteReason", "");
+            result.putIfAbsent("DocumentType", "");
 
             ObjectMapper mapper = new ObjectMapper();
             result.put("total_impuestos", formatoDineroEntero(totalImpuestos));
@@ -787,6 +808,18 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("qr", urlQr);
                 jsonMap.put("qr_url", urlQr);
 
+            String crediterNoteNumber = datos.getOrDefault("CreditNoteNumber", "N/A");
+            boolean esNotaCredito = !crediterNoteNumber.isBlank() && !crediterNoteNumber.equals("N/A");
+            if(esNotaCredito){  
+                logger.info("=== Iniciando Flujo de Nota de Crédito ===");
+                jsonMap.put("DocumentType", "91");
+                jsonMap.put("CreditNoteNumber", datos.getOrDefault("CreditNoteNumber", "N/A"));
+                jsonMap.put("CreditNoteInvoiceDate", datos.getOrDefault("CreditNoteInvoiceDate", "N/A"));
+                jsonMap.put("CreditNoteReason", datos.getOrDefault("CreditNoteReason", "N/A"));
+            } else{
+                logger.info("=== Iniciando Flujo de Factura ===");
+                jsonMap.put("DocumentType", "01");
+            }
                 String jsonPayload = objectMapper.writeValueAsString(jsonMap);
                 guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
                 enviarHttpPOST(jsonPayload);

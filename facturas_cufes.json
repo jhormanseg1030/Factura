@@ -4,7 +4,19 @@
     "cufe" : "b333e47b7ba6f6e2224cf93f4ea796e3acd5945cbead1df2ee8acfae3c1a26f7dcaaca75c113f636203f388169791c6f"
   },
   "guid:1fdf467993b74a6ead730780f3c6d17600017401" : {
-    "numero_factura_completo" : "P660504",
-    "cufe" : "1ccf1c838ef20a4b49b8be791597052a461d3d367c31613bc7fd31e793b026fc1cde026f533c606510724c328bb16892"
+    "numero_factura_completo" : "P660505",
+    "cufe" : "eeee5e412ad8ea7733ddce04f84f62dfa45021795ef6983db8818779a15351b5cc4096630f7459e554f4e8bd2188a874"
+  },
+  "guid:491b88e4785e4a5180898e36e3c0bccf00017388" : {
+    "numero_factura_completo" : "P660506",
+    "cufe" : "2ec78a5d62e811f832bdfeebac238df566ab08eb3f268964174f8eb55bf91606a3c2b4397e1d1e393a230a22003988a7"
+  },
+  "guid:55e7ac25349f44d89b51c11abc86458000017387" : {
+    "numero_factura_completo" : "P660507",
+    "cufe" : "9ef01a0191ce4c6dd82efe418bba3a0cbc978e477ea93e3776c1fdeaf76907442766612c7fe27f0d4d5a37041c7f8676"
+  },
+  "guid:9f30adc6b0ab4dc0b09b11a39042375600017386" : {
+    "numero_factura_completo" : "P660508",
+    "cufe" : "140676fe15760905549a8c832b979d9da0d5e9788185286dd09fc441e00e838e4b6bcac24540692750e68a7fceaa7566"
   }
 }
