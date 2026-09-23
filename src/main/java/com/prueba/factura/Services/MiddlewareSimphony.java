@@ -177,7 +177,6 @@ public class MiddlewareSimphony implements CommandLineRunner {
             if(cantidad <= 0) cantidad = 1.0;
             double porcentajeImp = parseDoubleSafe(porcImpuesto.replace(',', '.'), 0.0);
 
-            // Enteros: base + impuesto = total (evita FAU04 por centavos)
             long baseImponible;
             long valorImpuesto;
             if (porcentajeImp > 0) {
@@ -217,10 +216,6 @@ public class MiddlewareSimphony implements CommandLineRunner {
         return productos;
     }
 
-    /**
-     * Consolida impuestos del encabezado sumando las bases/valores enteros de cada línea.
-     * Garantiza FAU04: base_imponible total = suma de bases de detalle.
-     */
     @SuppressWarnings("unchecked")
     private static List<Map<String, String>> consolidarImpuestosDesdeProductos(List<Map<String, Object>> productos) {
         Map<String, Map<String, Object>> agrupado = new LinkedHashMap<>();
@@ -609,7 +604,6 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                     parseDoubleSafe(result.get("subtotal").replace(',', '.'), 0.0))));
             }
 
-            // Preferir suma de líneas (enteros) para FAU04; fallback al XML si no hay ítems gravados
             List<Map<String, String>> impuestos = consolidarImpuestosDesdeProductos(productos);
             if (impuestos.isEmpty()) {
                 impuestos = extraerImpuestos(doc, result.getOrDefault("subtotal", "0.00"));
