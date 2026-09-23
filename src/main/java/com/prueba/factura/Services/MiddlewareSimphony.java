@@ -509,7 +509,12 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 if (name == null || name.isBlank()) {
                     continue;
                 }
-
+                if("Direccion".equals(name)){
+                    result.putIfAbsent("Direccion", value == null ? "" : value); 
+                }
+                if("Telefono".equals(name)){
+                    result.putIfAbsent("Telefono", value == null ? "" : value);
+                }
                 if ("CreditNoteNumber".equals(name)) {
                     result.putIfAbsent("CreditNoteNumber", value == null ? "": value);
                 }
@@ -691,7 +696,9 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             double totalFiscalNum = valFacNum + ivaNum + incNum + icaNum;
 
             String claveTecnicaXml = datos.getOrDefault("ClaveTecnica", "");
-            String nitEmisor = datos.getOrDefault("RucEmisor", "8605108638");
+            String nitEmisor = datos.getOrDefault("RucEmisor", "N/A");
+            String direccion = datos.getOrDefault("Direccion", "N/A");
+            String telefono = datos.getOrDefault("Telefono", "N/A");
             String prefijoFac = datos.getOrDefault("RangoIni", "SETT").replaceAll("[0-9]", "");
             String identificacionCliente = datos.getOrDefault("identificacion_cliente", "");
             
@@ -765,6 +772,10 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
                 Map<String, Object> jsonMap = new LinkedHashMap<>();
                 jsonMap.put("numero_factura", numeroFacturaCompleto);
+                jsonMap.put("RucEmisor",nitEmisor);
+                jsonMap.put("direccion", direccion);
+                jsonMap.put("Telefono", telefono);
+                jsonMap.put("restaurante", datos.getOrDefault("restaurante", "N/A"));
                 jsonMap.put("fecha_procesamiento", LocalDate.now().toString());
                 jsonMap.put("numero_ticket", datos.get("numero_ticket"));
                 jsonMap.put("check_id", checkId);
@@ -789,7 +800,6 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("total_fiscal", formatoDineroEntero(redondearEntero(totalFiscalNum)));
                 jsonMap.put("propina", datos.getOrDefault("propina", "0.00"));
                 jsonMap.put("total", datos.getOrDefault("total", "0.00"));
-                jsonMap.put("restaurante", datos.getOrDefault("restaurante", "N/A"));
                 jsonMap.put("workstation", datos.getOrDefault("workstation_nombre", "N/A"));
                 jsonMap.put("empleado", datos.getOrDefault("empleado", "N/A"));
                 jsonMap.put("identificacion_cliente", identificacionCliente);
