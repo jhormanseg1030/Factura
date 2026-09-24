@@ -1,6 +1,5 @@
 package com.prueba.factura.Services;
 
-import java.io.File;
 import java.io.OutputStream;
 import java.net.Socket;
 
@@ -11,6 +10,7 @@ import java.awt.image.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -26,86 +26,92 @@ public class Impresion {
 
     private static final Logger logger = LoggerFactory.getLogger(Impresion.class);
 
-    private String Etiqueta(String etiqueta, String valor) {
-        int anchoPapel = 15;
-        if (etiqueta.length() > anchoPapel) {
-            etiqueta = etiqueta.substring(0, anchoPapel);
-        }
-        String espacios = String.format("%-" + anchoPapel + "s", etiqueta);
-        return espacios + ": " + valor + "\n";
+    private void imprimirLineaTexto(String etiqueta, String valor, int tamanoLetra, OutputStream out) throws Exception {
+    BufferedImage imgTexto = TextoImagen.crearTexto(etiqueta + ": " + valor, tamanoLetra);
+    ImagenFactura.imprimirImagen(imgTexto, out);
+    }
+
+    private void sinLinea(String valor, int tamanoLetra, OutputStream out) throws Exception {
+    BufferedImage imgTexto = TextoImagen.crearTexto( valor, tamanoLetra);
+    ImagenFactura.imprimirImagen(imgTexto, out);
     }
 
     public void imprimirFactura(JsonNode datos) {
         logger.info(">>> INTENTANDO CONECTAR A IP: [{}] Y PUERTO: [{}]", ipImpresora, puerto);
         try (Socket socket = new Socket(ipImpresora, puerto);
              OutputStream out = socket.getOutputStream()) {
+                
              
             out.write(new byte[] {0x1B, 0x40});
 
             byte[] izquierda = new byte[] {0x1B, 0x61, 0x00};
             byte[] centro    = new byte[] {0x1B, 0x61, 0x01};
-            byte[] negrita   = new byte[] {0x1B, 0x45, 0x01};
-            byte[] noNegrita = new byte[] {0x1B, 0x45, 0x00};
             byte[] cortarPapel = new byte[] {0x1D, 0x56, 0x41, 0x03};
 
-            // Cabecera
-            BufferedImage logo = ImageIO.read(new File("src/main/java/com/prueba/factura/Image/Zonak.jpeg"));
-            ImagenFactura.imprimirImagen(logo, out);    
-
+            // Imagen de Zonak
+            ClassPathResource resource = new ClassPathResource("Zonak.jpeg");
+            BufferedImage logo = ImageIO.read(resource.getInputStream());
             out.write(centro);
-            out.write(negrita);
-            out.write(("Local: " + datos.path("Local").asText("N/A")).getBytes("IBM850"));
+            ImagenFactura.imprimirImagen(logo, out);
+//------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles de la empresa                                                       */ 
             out.write(("\n").getBytes("IBM850"));
-            out.write(("Restaurante: " + datos.path("restaurante").asText("N/A")).getBytes("IBM850"));
-            out.write(("\n").getBytes("IBM850"));    
-
-            out.write(noNegrita);
             out.write(centro);
-            out.write(("NIT: " + datos.path("NIT").asText("N/A") + "\n").getBytes("IBM850"));
+            sinLinea(datos.path("Local").asText("N/A"), 32, out);
+            out.write(centro);
+            sinLinea(datos.path("restaurante").asText("N/A"), 28, out);
             out.write(("\n").getBytes("IBM850"));
             
             out.write(centro);
-            out.write(("Direccion: " + datos.path("Direccion").asText("N/A")).getBytes("IBM850"));
+            sinLinea(datos.path("NIT").asText("N/A"), 28, out);
+            out.write(centro);
+            sinLinea(datos.path("Direccion").asText("N/A"), 28, out);
+            out.write(centro);
+            sinLinea(datos.path("Tel").asText("N/A"), 28, out);
             out.write(("\n").getBytes("IBM850"));
-            out.write(("Tel: " + datos.path("Tel").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("\n").getBytes("IBM850"));    
-            out.write("\n-----------------------------------------\n\n".getBytes("IBM850"));
 
-            // Datos del cliente
+            out.write("\n_________________________________________\n".getBytes("IBM850"));
+            out.write(("\n").getBytes("IBM850"));
+//------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles del Cliente                                                       */            
             out.write(izquierda);
-            out.write(("Cliente: " + datos.path("Cliente").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("Tipo de Identificacion: " + datos.path("identificacion_cliente").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("Direccion: " + datos.path("Dirección").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("Telefono: " + datos.path("Telefono").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("Hora Generacion: " + datos.path("fecha Generacion").asText("N/A") + "\n").getBytes("IBM850"));
-
-            out.write("-----------------------------------------\n".getBytes("IBM850"));
-
-            // Datos del Ticket / Factura
-            out.write(("Ticket: " + datos.path("numero_ticket").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("Numero de la factura: " + datos.path("numero_factura").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("Numero del Check: " + datos.path("check_id").asText("N/A") + "\n").getBytes("IBM850"));
-            out.write(("Fecha de Generacion: " + datos.path("fecha_procesamiento").asText("N/A") + "\n").getBytes("IBM850"));
-
-            out.write("-----------------------------------------\n\n".getBytes("IBM850"));
-
-            out.write(("Tipo de Empleado: " + datos.path("empleado").asText("N/A") + "\n\n").getBytes("IBM850"));
-
-            // Detalle de Items
+            imprimirLineaTexto("Cliente", datos.path("Cliente").asText("N/A"),26, out);
+            imprimirLineaTexto("NIT/CC", datos.path("NIT/CC").asText("N/A"), 26, out);
+            imprimirLineaTexto("Dirección", datos.path("Dirección").asText("N/A"), 26, out);
+            imprimirLineaTexto("Telefono", datos.path("Telefono").asText("N/A"), 26, out);
+            imprimirLineaTexto("Fecha de Generacion", datos.path("Fecha de Generacion").asText("N/A"), 26, out);
+            out.write(("\n").getBytes("IBM850"));
+//------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles de la mesa                                                       */
+            out.write(izquierda);
+            imprimirLineaTexto("Mesa", datos.path("Mesa").asText("N/A"), 26, out);
+            imprimirLineaTexto("Cajero", datos.path("Cajero").asText("N/A"), 26, out);
+            imprimirLineaTexto("Chk", datos.path("Chk").asText("N/A"), 26, out);
+            imprimirLineaTexto("Caja", datos.path("Caja").asText("N/A"), 26, out);
+            out.write(("\n").getBytes("IBM850"));
+            out.write("\n_________________________________________\n".getBytes("IBM850"));
+//------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles de los productos                                                       */
             JsonNode itemsNode = datos.path("items"); 
             if (itemsNode.isArray()) {
                 for (JsonNode item : itemsNode) {
                     out.write(izquierda);
                     out.write(("codigo : " + item.path("items").asText("N/A") + "\n").getBytes("IBM850"));
-                    out.write(("nombreProducto: " + item.path("nombre").asText("N/A") + "\n").getBytes("IBM850"));
+                    out.write(("nombreProducto  : " + item.path("nombre").asText("N/A") + "\n").getBytes("IBM850"));
                     out.write(("cantidad: " + item.path("cantidad").asText("0.00") + "\n").getBytes("IBM850"));
                     out.write(("precioUnitarioSinImpuesto: " + item.path("precio").asText("0.00") + "\n").getBytes("IBM850"));
                     out.write(("baseImponible: " + item.path("subtotal").asText("0.00") + "\n").getBytes("IBM850"));
                     out.write(("totalItem: " + item.path("total").asText("0.00") + "\n\n").getBytes("IBM850"));
                 }
-            }   
+            }
+            out.write("\n_________________________________________".getBytes("IBM850"));
 
-            // Detalle de Pagos
+//-----------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles del total a pagar                                                       */
+
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles del forma de pago                                                       */
             JsonNode pagosNode = datos.path("pagos");
             if (pagosNode.isArray()) {
                 for (JsonNode pago : pagosNode) {
@@ -115,9 +121,21 @@ public class Impresion {
                     out.write(("refNum : " + pago.path("referenceNumber").asText("N/A") + "\n\n").getBytes("IBM850"));   
                 }
             }
-            
-            // Pie con QR y CUFE
-            out.write(("QR: " + datos.path("urlQr").asText("N/A") + "\n\n").getBytes("IBM850"));
+            out.write("\n_________________________________________\n".getBytes("IBM850"));
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles de la resolucion de la DIAN                                        */
+            out.write(izquierda);
+            imprimirLineaTexto("Resolucion DIAN", datos.path("Resolucion").asText("N/A"),26, out);
+            imprimirLineaTexto("Fecha Resolucion",datos.path("Fecha Resolucion").asText("N/A"),26, out);
+            imprimirLineaTexto("Fecha Inicial", datos.path("Fecha Inicial").asText("N/A"), 26, out);
+            imprimirLineaTexto("Fecha Final", datos.path("Fecha Final").asText("N/A"), 26, out);
+            imprimirLineaTexto("Rango Inicial", datos.path("Rango Inicial").asText("N/A"), 26, out);
+            imprimirLineaTexto("Rango Final", datos.path("Rango Final").asText("N/A"), 26, out);
+            out.write("\n_________________________________________\n".getBytes("IBM850"));
+//------------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles del CUFE Y QR                                                           */
+
             out.write(("CUFE: " + datos.path("cufeGenerado").asText("N/A") + "\n\n").getBytes("IBM850"));
 
             out.write(cortarPapel);
