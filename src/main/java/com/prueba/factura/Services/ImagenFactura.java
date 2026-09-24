@@ -2,61 +2,66 @@ package com.prueba.factura.Services;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.awt.image.*;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
 
 public class ImagenFactura {
     
-    public static void imprimirImagen(BufferedImage img, OutputStream out) throws IOException{
-        if(img == null) return;
+    private static final int ANCHO_MAXIMO_LOGO = 384; 
+
+    public static void imprimirImagen(BufferedImage img, OutputStream out) throws IOException {
+        if (img == null) return;
+
+        if (img.getWidth() > ANCHO_MAXIMO_LOGO) {
+            int nuevoAncho = ANCHO_MAXIMO_LOGO;
+            int nuevoAlto = (img.getHeight() * ANCHO_MAXIMO_LOGO) / img.getWidth();
+            
+            BufferedImage imgEscalada = new BufferedImage(nuevoAncho, nuevoAlto, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = imgEscalada.createGraphics();
+            
+            g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2d.drawImage(img, 0, 0, nuevoAncho, nuevoAlto, null);
+            g2d.dispose();
+            
+            img = imgEscalada;
+        }
 
         int width = img.getWidth();
         int height = img.getHeight();
 
-        out.write(new byte[]{0x1B, 0x61, 0x01});
-
         int bytesPerRow = (width + 7) / 8;
 
-        int dataLenght = 10 + (bytesPerRow * height);
-        byte pL = (byte) (dataLenght & 0xFF);
-        byte pH = (byte) ((dataLenght >> 8) & 0xFF);
-
-        byte[] header = new byte[]{
-            0x1D, 0x28, 0x4C, 
-            pL, pH, 
-            0x30, 0x43, 0x30, 
-            0x01, 0x01, 
-            0x31,
-            (byte) (bytesPerRow & 0xFF), (byte) ((bytesPerRow >> 8) & 0xFF),
-            (byte) (height & 0xFF), (byte) ((height >> 8) & 0xFF)
+        byte[] header = new byte[] {
+            0x1D, 0x76, 0x30, 0x00,
+            (byte) (bytesPerRow & 0xFF),
+            (byte) ((bytesPerRow >> 8) & 0xFF),
+            (byte) (height & 0xFF),
+            (byte) ((height >> 8) & 0xFF)
         };
         out.write(header);
 
         byte[] buffer = new byte[bytesPerRow * height];
-        int index = 0;
 
-        for(int y = 0; y < height; y++){
-            for(int x = 0; x < width; x += 8){
-                int bit = 0;
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int rgb = img.getRGB(x, y);
 
-                if( x < width){
-                    int rgb = img.getRGB(x, y);
-                    int r = (rgb >> 16) & 0xFF;
-                    int g = (rgb >> 8) & 0xFF;
-                    int b = rgb & 0xFF;
+                int alpha = (rgb >> 24) & 0xFF;
+                if (alpha < 128) continue; 
 
-                    int luminance = (int) (0.299 * r + 0.587 * g + 0.114 * b);
-                    
-                    if(luminance < 128){
-                        bit = 1;
-                    }
-                }
-                int bytePos = index + (x / 8);
-                int bitPos = 7 - (x % 8);
-                if (bit == 1) {
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+
+                int luminance = (int) (0.299 * r + 0.587 * g + 0.114 * b);
+
+                if (luminance < 160) {
+                    int bytePos = (y * bytesPerRow) + (x / 8);
+                    int bitPos = 7 - (x % 8);
                     buffer[bytePos] |= (1 << bitPos);
                 }
             }
-            index += bytesPerRow;
         }
         out.write(buffer);
         out.flush();
