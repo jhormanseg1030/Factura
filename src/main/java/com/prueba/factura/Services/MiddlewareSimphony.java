@@ -164,7 +164,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
             if(nombreProducto.isBlank()){
                 continue;
             }
-            String codigo = itemFields.getOrDefault("MenuItemNumber", itemFields.getOrDefault("ObjectNumber", "PLT-" + (i + 1)));
+            String codigo = itemFields.getOrDefault("MiObjNum", "N/A");
             String cantidadStr = itemFields.getOrDefault("SalesCount", "1");
             String totalItemStr = itemFields.getOrDefault("Total", "0.00");
 

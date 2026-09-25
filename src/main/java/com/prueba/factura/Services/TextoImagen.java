@@ -17,7 +17,8 @@ public class TextoImagen {
         BufferedImage imgTemp = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D gTemp = imgTemp.createGraphics();
 
-        Font font = new Font("Calibri", Font.ITALIC, tamanoLetra);
+        Font font = new Font("Courier New", Font.BOLD, tamanoLetra);
+        
         gTemp.setFont(font);
         FontMetrics fm = gTemp.getFontMetrics();
 
@@ -27,7 +28,6 @@ public class TextoImagen {
         gTemp.dispose();
 
         if (ancho <= 0) ancho = 1;
-        if (ancho > 384) ancho = 384;
 
         BufferedImage imagenFinal = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = imagenFinal.createGraphics();

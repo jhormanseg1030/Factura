@@ -5,6 +5,7 @@ import java.net.Socket;
 
 import javax.imageio.ImageIO;
 
+
 import java.awt.image.*;
 
 import org.slf4j.Logger;
@@ -26,22 +27,23 @@ public class Impresion {
 
     private static final Logger logger = LoggerFactory.getLogger(Impresion.class);
 
+    public record Producto(String Cant, String Descripcion, String precio, String Total){}
+    
     private void imprimirLineaTexto(String etiqueta, String valor, int tamanoLetra, OutputStream out) throws Exception {
-    BufferedImage imgTexto = TextoImagen.crearTexto(etiqueta + ": " + valor, tamanoLetra);
-    ImagenFactura.imprimirImagen(imgTexto, out);
+        BufferedImage imgTexto = TextoImagen.crearTexto(etiqueta + ": " + valor, tamanoLetra);
+        ImagenFactura.imprimirImagen(imgTexto, out);
     }
 
     private void sinLinea(String valor, int tamanoLetra, OutputStream out) throws Exception {
-    BufferedImage imgTexto = TextoImagen.crearTexto( valor, tamanoLetra);
-    ImagenFactura.imprimirImagen(imgTexto, out);
+        BufferedImage imgTexto = TextoImagen.crearTexto( valor, tamanoLetra);
+        ImagenFactura.imprimirImagen(imgTexto, out);
     }
 
     public void imprimirFactura(JsonNode datos) {
-        logger.info(">>> INTENTANDO CONECTAR A IP: [{}] Y PUERTO: [{}]", ipImpresora, puerto);
+
         try (Socket socket = new Socket(ipImpresora, puerto);
              OutputStream out = socket.getOutputStream()) {
                 
-             
             out.write(new byte[] {0x1B, 0x40});
 
             byte[] izquierda = new byte[] {0x1B, 0x61, 0x00};
@@ -88,23 +90,38 @@ public class Impresion {
             imprimirLineaTexto("Cajero", datos.path("Cajero").asText("N/A"), 26, out);
             imprimirLineaTexto("Chk", datos.path("Chk").asText("N/A"), 26, out);
             imprimirLineaTexto("Caja", datos.path("Caja").asText("N/A"), 26, out);
-            out.write(("\n").getBytes("IBM850"));
             out.write("\n_________________________________________\n".getBytes("IBM850"));
 //------------------------------------------------------------------------------------------------------------------------------------------------
-/*                                                                   Detalles de los productos                                                       */
+/*                                                                   Detalles de los productos                                                       */  
+            String enc = ColumnasProducto.formatearEncabezado();
+            BufferedImage imgEncabezado = TextoImagen.crearTexto(enc, 26);
+            ImagenFactura.imprimirImagen(imgEncabezado, out);
+
+
             JsonNode itemsNode = datos.path("items"); 
             if (itemsNode.isArray()) {
                 for (JsonNode item : itemsNode) {
                     out.write(izquierda);
-                    out.write(("codigo : " + item.path("items").asText("N/A") + "\n").getBytes("IBM850"));
-                    out.write(("nombreProducto  : " + item.path("nombre").asText("N/A") + "\n").getBytes("IBM850"));
-                    out.write(("cantidad: " + item.path("cantidad").asText("0.00") + "\n").getBytes("IBM850"));
-                    out.write(("precioUnitarioSinImpuesto: " + item.path("precio").asText("0.00") + "\n").getBytes("IBM850"));
-                    out.write(("baseImponible: " + item.path("subtotal").asText("0.00") + "\n").getBytes("IBM850"));
-                    out.write(("totalItem: " + item.path("total").asText("0.00") + "\n\n").getBytes("IBM850"));
+                    String cant = item.path("Cantidad").asText(item.path("cantidad").asText("1"));
+                    String codigo = item.path("Items").asText(item.path("items").asText(" "));
+                    String nombre = item.path("Descripcion").asText(item.path("descripcion").asText("N/A"));
+                    String precio = item.path("Precio").asText(item.path("precio").asText("0.00"));
+                    String total = item.path("Total").asText(item.path("total").asText("0.00"));
+
+                    ColumnasProducto.Producto produc = new ColumnasProducto.Producto(cant, codigo, nombre, precio, total);
+
+                    String linea1 = ColumnasProducto.formatoLinea1(produc);
+                    BufferedImage imgProducto = TextoImagen.crearTexto(linea1, 28);
+                    ImagenFactura.imprimirImagen(imgProducto, out);
+
+                    if(nombre != null && !nombre.trim().isEmpty() && !nombre.trim().equalsIgnoreCase(codigo.trim())){
+                        String linea2 = ColumnasProducto.formatoLinea2(produc);
+                        BufferedImage imgNombre = TextoImagen.crearTexto(linea2, 28);
+                        ImagenFactura.imprimirImagen(imgNombre, out);
+                    }
                 }
             }
-            out.write("\n_________________________________________".getBytes("IBM850"));
+            out.write("\n_________________________________________\n".getBytes("IBM850"));
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 /*                                                                   Detalles del total a pagar                                                       */
