@@ -10,6 +10,7 @@ import java.awt.image.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,9 @@ public class Impresion {
     private static final Logger logger = LoggerFactory.getLogger(Impresion.class);
 
     public record Producto(String Cant, String Descripcion, String precio, String Total){}
+
+    @Autowired 
+    private GenerarQr generarQr;
     
     private void imprimirLineaTexto(String etiqueta, String valor, int tamanoLetra, OutputStream out) throws Exception {
         BufferedImage imgTexto = TextoImagen.crearTexto(etiqueta + ": " + valor, tamanoLetra);
@@ -39,6 +43,19 @@ public class Impresion {
         ImagenFactura.imprimirImagen(imgTexto, out);
     }
 
+    private void imprimirCufeFragmentado(String cufe, int tamanoLetra, OutputStream out) throws Exception {
+    if (cufe == null || cufe.isEmpty() || "N/A".equals(cufe)) return;
+
+    sinLinea("CUFE:", tamanoLetra, out);
+    
+    int bloque = 32;
+    for (int i = 0; i < cufe.length(); i += bloque) {
+        int fin = Math.min(i + bloque, cufe.length());
+        String fragmento = cufe.substring(i, fin);
+        sinLinea(fragmento, tamanoLetra - 2, out);
+    }
+}
+
     public void imprimirFactura(JsonNode datos) {
 
         try (Socket socket = new Socket(ipImpresora, puerto);
@@ -48,6 +65,7 @@ public class Impresion {
 
             byte[] izquierda = new byte[] {0x1B, 0x61, 0x00};
             byte[] centro    = new byte[] {0x1B, 0x61, 0x01};
+            byte[] derecha   = new byte[] {0x1B, 0x61, 0x02};
             byte[] cortarPapel = new byte[] {0x1D, 0x56, 0x41, 0x03};
 
             // Imagen de Zonak
@@ -70,8 +88,21 @@ public class Impresion {
             sinLinea(datos.path("Direccion").asText("N/A"), 28, out);
             out.write(centro);
             sinLinea(datos.path("Tel").asText("N/A"), 28, out);
+            out.write(centro);
+            sinLinea("Act 5611 13.8x1000", 28, out);
+            out.write(centro);
+            sinLinea("Act 5630 13.8x1000", 28, out);
+            out.write(centro);
+            sinLinea("Act 5613 13.8x1000", 28, out);
+            out.write(centro);
+            sinLinea("Act 5619 13.8x1000", 28, out);
+            out.write(centro);
+            sinLinea("Act 4711 4.14x1000", 28, out);
+            out.write(centro);
+            sinLinea("Gran Contribuyente ICA", 28, out);
+            out.write(centro);
+            sinLinea("Agente Retenedor de IVA", 28, out);
             out.write(("\n").getBytes("IBM850"));
-
             out.write("\n_________________________________________\n".getBytes("IBM850"));
             out.write(("\n").getBytes("IBM850"));
 //------------------------------------------------------------------------------------------------------------------------------------------------
@@ -96,14 +127,13 @@ public class Impresion {
             String enc = ColumnasProducto.formatearEncabezado();
             BufferedImage imgEncabezado = TextoImagen.crearTexto(enc, 26);
             ImagenFactura.imprimirImagen(imgEncabezado, out);
-
-
             JsonNode itemsNode = datos.path("items"); 
             if (itemsNode.isArray()) {
                 for (JsonNode item : itemsNode) {
                     out.write(izquierda);
-                    String cant = item.path("Cantidad").asText(item.path("cantidad").asText("1"));
-                    String codigo = item.path("Items").asText(item.path("items").asText(" "));
+                    
+                    String cant = item.path("Cant").asText(item.path("Cantidad").asText("1"));
+                    String codigo = item.path("Codigo").asText(item.path("codigo").asText(""));
                     String nombre = item.path("Descripcion").asText(item.path("descripcion").asText("N/A"));
                     String precio = item.path("Precio").asText(item.path("precio").asText("0.00"));
                     String total = item.path("Total").asText(item.path("total").asText("0.00"));
@@ -111,13 +141,15 @@ public class Impresion {
                     ColumnasProducto.Producto produc = new ColumnasProducto.Producto(cant, codigo, nombre, precio, total);
 
                     String linea1 = ColumnasProducto.formatoLinea1(produc);
-                    BufferedImage imgProducto = TextoImagen.crearTexto(linea1, 28);
+                    BufferedImage imgProducto = TextoImagen.crearTexto(linea1, 26);
                     ImagenFactura.imprimirImagen(imgProducto, out);
 
-                    if(nombre != null && !nombre.trim().isEmpty() && !nombre.trim().equalsIgnoreCase(codigo.trim())){
+                    if (!codigo.trim().isEmpty()) {
                         String linea2 = ColumnasProducto.formatoLinea2(produc);
+                        if(!linea2.isEmpty()){
                         BufferedImage imgNombre = TextoImagen.crearTexto(linea2, 28);
                         ImagenFactura.imprimirImagen(imgNombre, out);
+                        }
                     }
                 }
             }
@@ -125,6 +157,17 @@ public class Impresion {
 
 //-----------------------------------------------------------------------------------------------------------------------------------------------------
 /*                                                                   Detalles del total a pagar                                                       */
+            out.write(derecha);
+            imprimirLineaTexto("Base", datos.path("Subtotal").asText("0.00"), 26, out);
+            out.write(derecha);
+            imprimirLineaTexto("INC 8%", datos.path("INC 8%").asText("0.00"), 26, out);
+            out.write(derecha);
+            imprimirLineaTexto("Total", datos.path("Subtotal").asText("0.00"), 26, out);
+            out.write(derecha);
+            imprimirLineaTexto("Propina", datos.path("Propina").asText("0.00"), 26, out);
+            out.write(derecha);
+            imprimirLineaTexto("Total", datos.path("Total").asText("0.00"), 26, out);
+            out.write("\n_________________________________________\n".getBytes("IBM850"));
 
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -132,16 +175,15 @@ public class Impresion {
             JsonNode pagosNode = datos.path("pagos");
             if (pagosNode.isArray()) {
                 for (JsonNode pago : pagosNode) {
-                    out.write(("nombrePago : " + pago.path("tenderName").asText("N/A") + "\n").getBytes("IBM850"));
-                    out.write(("tenderAmount : " + pago.path("tenderAmount").asText("N/A") + "\n").getBytes("IBM850"));
-                    out.write(("tipAmount : " + pago.path("tipAmount").asText("N/A") + "\n").getBytes("IBM850"));
-                    out.write(("refNum : " + pago.path("referenceNumber").asText("N/A") + "\n\n").getBytes("IBM850"));   
+                    out.write(izquierda);
+                    imprimirLineaTexto("Forma de Pago", pago.path("Forma de Pago").asText("N/A"), 26, out);
+                    imprimirLineaTexto("Medio de Pago", pago.path("tenderName").asText("N/A"), 26, out);
                 }
             }
             out.write("\n_________________________________________\n".getBytes("IBM850"));
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------
-/*                                                                   Detalles de la resolucion de la DIAN                                        */
+/*                                                                   Detalles de la resolucion de la DIAN                                             */
             out.write(izquierda);
             imprimirLineaTexto("Resolucion DIAN", datos.path("Resolucion").asText("N/A"),26, out);
             imprimirLineaTexto("Fecha Resolucion",datos.path("Fecha Resolucion").asText("N/A"),26, out);
@@ -151,13 +193,33 @@ public class Impresion {
             imprimirLineaTexto("Rango Final", datos.path("Rango Final").asText("N/A"), 26, out);
             out.write("\n_________________________________________\n".getBytes("IBM850"));
 //------------------------------------------------------------------------------------------------------------------------------------------------------
+/*                                                                   Detalles de impuestos Incluidos                                                  */
+            out.write(centro);
+            sinLinea("Impuestos Incluidos", 24, out);
+            sinLinea( "Advertencia de Propina", 26, out);
+            sinLinea("En la parte posterior de este documento", 26, out);
+            out.write(("\n").getBytes("IBM850"));
+            sinLinea("Implementado Por Inverleoka SAS", 26, out);
+            sinLinea("NIT 8605108638", 26, out);
+            sinLinea("Integrador: Hospitality", 26, out);
+            sinLinea("Restaurants Automation SAS", 26, out);
+            sinLinea("NIT 901518527-2", 26, out);
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------
 /*                                                                   Detalles del CUFE Y QR                                                           */
 
-            out.write(("CUFE: " + datos.path("cufeGenerado").asText("N/A") + "\n\n").getBytes("IBM850"));
+            String cufe = datos.path("cufeGenerado").asText("N/A");
+            if(!"N/A".equals(cufe)){
+            BufferedImage qrImage = generarQr.generateQRCodeCufe(cufe, 250, 250);
+            out.write(centro);
+            ImagenFactura.imprimirImagen(qrImage, out);
+            out.write(("\n").getBytes("IBM850"));
+            }
+            out.write(izquierda);
+            imprimirCufeFragmentado(cufe, 24, out);
 
             out.write(cortarPapel);
             out.flush();
-
             logger.info("Factura impresa correctamente en {}:{}", ipImpresora, puerto);
 
         } catch (Exception e) {

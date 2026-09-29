@@ -17,7 +17,7 @@ public class TextoImagen {
         BufferedImage imgTemp = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D gTemp = imgTemp.createGraphics();
 
-        Font font = new Font("Courier New", Font.BOLD, tamanoLetra);
+        Font font = new Font("Tahoma", Font.ITALIC, tamanoLetra);
         
         gTemp.setFont(font);
         FontMetrics fm = gTemp.getFontMetrics();
