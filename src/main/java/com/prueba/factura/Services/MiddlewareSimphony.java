@@ -84,6 +84,9 @@ public class MiddlewareSimphony implements CommandLineRunner {
     private FacturaPendienteService facturaPendienteService;
 
     @Autowired
+    private Impresion impresion;
+
+    @Autowired
     private ComunicadorBase comunicadorBase;
 
     private final HttpClient client = HttpClient.newBuilder()
@@ -173,7 +176,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
             String nombreImpuesto = itemFields.getOrDefault("DE_SATCOM_NombreImpuesto", "IVA");
 
             long totalItem = redondearEntero(parseDoubleSafe(totalItemStr.replace(',', '.'), 0.0));
-            double cantidad = parseDoubleSafe(cantidadStr.replace(',', '.'), 0.0);
+            double cantidad = parseDoubleSafe(cantidadStr.replace(',', '.'), 0);
             if(cantidad <= 0) cantidad = 1.0;
             double porcentajeImp = parseDoubleSafe(porcImpuesto.replace(',', '.'), 0.0);
 
@@ -187,13 +190,16 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 valorImpuesto = 0L;
             }
             long precioUnitarioSinImpuesto = redondearEntero(baseImponible / cantidad);
+            String cantidadFormateada = cantidad == Math.rint(cantidad)
+                ? Long.toString(Math.round(cantidad))
+                : Double.toString(cantidad);
 
             Map<String, Object> itemMap = new LinkedHashMap<>();
             itemMap.put("codigo", codigo);
             itemMap.put("nombre", nombreProducto);
             itemMap.put("descripcion", nombreProducto);
             itemMap.put("unidad_medida", "94");
-            itemMap.put("cantidad", String.format(Locale.US, "%.2f", cantidad));
+            itemMap.put("cantidad", cantidadFormateada);
             itemMap.put("Total", formatoDineroEntero(totalItem));
             itemMap.put("precio", formatoDineroEntero(precioUnitarioSinImpuesto));
             itemMap.put("descuento", "0.00");
@@ -526,6 +532,9 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 if("CreditNoteReason".equals(name)){
                     result.putIfAbsent("CreditNoteReason", value ==null ? "": value);
                 }
+                if("RazonSocial".equals(name)){
+                    result.putIfAbsent("RazonSocial", value == null ? "" : value);
+                }
 
                 if("DocumentType".equals(name)){
                     result.putIfAbsent("DocumentType", value == null ? "": value);
@@ -618,11 +627,10 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 Map<String, Object> primero = productos.get(0);
                 result.putIfAbsent("producto", String.valueOf(primero.getOrDefault("nombre", "")));
                 String cantidadResumen = String.valueOf(primero.getOrDefault("cantidad", "1"));
-                if (cantidadResumen.endsWith(".00")) {
+                if (cantidadResumen.endsWith(" ")) {
                     cantidadResumen = cantidadResumen.substring(0, cantidadResumen.length() - 3);
                 }
                 result.putIfAbsent("cantidad", cantidadResumen);
-                // Precio unitario de resumen: Total del ítem (como en Simphony UnitPrice/Total)
                 result.putIfAbsent("precio_unitario", String.valueOf(primero.getOrDefault("Total",
                     primero.getOrDefault("precio", ""))));
                 result.putIfAbsent("subtotal", String.valueOf(primero.getOrDefault("Total", "0.00")));
@@ -729,7 +737,14 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 }
             }
 
-            if (cliente == null && identificacionCliente.isBlank()) {
+            if (cliente != null) {
+                String identificacionClienteEncontrado = cliente.path("identificacion").asText("").trim();
+                if (!identificacionClienteEncontrado.isBlank()) {
+                    identificacionCliente = identificacionClienteEncontrado;
+                }
+            }
+
+            if (identificacionCliente.isBlank()) {
                 identificacionCliente = identificacionConsumidorFinal;
                 logger.info("Venta sin cliente identificado; se usará consumidor final: {}",
                     identificacionConsumidorFinal);
@@ -772,46 +787,58 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
                 Map<String, Object> jsonMap = new LinkedHashMap<>();
                 jsonMap.put("numero_factura", numeroFacturaCompleto);
-                jsonMap.put("RucEmisor",nitEmisor);
-                jsonMap.put("direccion", direccion);
-                jsonMap.put("Telefono", telefono);
+                jsonMap.put("RucEmisor", nitEmisor);
+                jsonMap.put("Direccion", direccion);
+                jsonMap.put("Tel", telefono);
                 jsonMap.put("restaurante", datos.getOrDefault("restaurante", "N/A"));
+                jsonMap.put("RazonSocial", datos.getOrDefault("RazonSocial", "N/A"));
                 jsonMap.put("fecha_procesamiento", LocalDate.now().toString());
                 jsonMap.put("numero_ticket", datos.get("numero_ticket"));
                 jsonMap.put("check_id", checkId);
                 jsonMap.put("harmony_id", harmonyId);
                 jsonMap.put("caja_wsid", wsId);
                 jsonMap.put("hora_hora", horaFac);
-                jsonMap.put("fecha_hora", fechaFac+ "T" + horaFac);
+                jsonMap.put("fecha_hora", fechaFac + "T" + horaFac);
+                jsonMap.put("Fecha de Generacion", fechaFac + " " + horaFac);
                 jsonMap.put("condicion_venta", condicionVenta);
                 jsonMap.put("codigo_fiscal", codigoFiscal);
                 jsonMap.put("guid_transaccion", guid);
                 jsonMap.put("tipo_ambiente", tipoAmbiente);
-                jsonMap.put("numero_factura_completo", numeroFacturaCompleto);
                 jsonMap.put("clave_tecnica_xml", claveTecnicaXml);
+                
                 jsonMap.put("Resolucion", datos.getOrDefault("Resolucion", "N/A"));
-                jsonMap.put("ResolucionIni", datos.getOrDefault("ResolucionIni", "N/A"));
-                jsonMap.put("ResolucionFin", datos.getOrDefault("ResolucionFin", "N/A"));
-                jsonMap.put("FechaResolucion", datos.getOrDefault("FechaResolucion", "N/A"));
-                jsonMap.put("RangoIni", datos.getOrDefault("RangoIni", "N/A"));
-                jsonMap.put("RangoFin", datos.getOrDefault("RangoFin", "N/A"));
-                jsonMap.put("subtotal_base", formatoDineroEntero(redondearEntero(valFacNum)));
-                jsonMap.put("total_impuesto", formatoDineroEntero(redondearEntero(incNum)));
-                jsonMap.put("total_fiscal", formatoDineroEntero(redondearEntero(totalFiscalNum)));
-                jsonMap.put("propina", datos.getOrDefault("propina", "0.00"));
-                jsonMap.put("total", datos.getOrDefault("total", "0.00"));
-                jsonMap.put("workstation", datos.getOrDefault("workstation_nombre", "N/A"));
-                jsonMap.put("empleado", datos.getOrDefault("empleado", "N/A"));
+                jsonMap.put("Fecha Resolucion", datos.getOrDefault("FechaResolucion", "N/A"));
+                jsonMap.put("Fecha Inicial", datos.getOrDefault("ResolucionIni", "N/A"));
+                jsonMap.put("Fecha Final", datos.getOrDefault("ResolucionFin", "N/A"));
+                jsonMap.put("Rango Inicial", datos.getOrDefault("RangoIni", "N/A"));
+                jsonMap.put("Rango Final", datos.getOrDefault("RangoFin", "N/A"));
+                
+                jsonMap.put("Base", formatoDineroEntero(redondearEntero(valFacNum)));
+                jsonMap.put("INC", formatoDineroEntero(redondearEntero(incNum)));
+                jsonMap.put("Subtotal", formatoDineroEntero(redondearEntero(totalFiscalNum)));
+                jsonMap.put("Propina", datos.getOrDefault("propina", "0.00"));
+                jsonMap.put("Total", datos.getOrDefault("total", "0.00"));
+                
+                jsonMap.put("Cajero", datos.getOrDefault("empleado", "N/A"));
+                jsonMap.put("Mesa", "N/A");
                 jsonMap.put("identificacion_cliente", identificacionCliente);
-                jsonMap.put("cliente", cliente);
+                jsonMap.put("cliente", cliente != null ? cliente.path("nombre").asText("Consumidor Final") : "Consumidor Final");
                 jsonMap.put("cliente_encontrado", cliente != null);
+                jsonMap.put("Dirección", (cliente != null) ? cliente.path("direccion").asText(" ") : " ");
+                jsonMap.put("Telefono", (cliente != null) ? cliente.path("telefono").asText(" ") : "");
+
                 jsonMap.put("impuestos", objectMapper.readTree(datos.getOrDefault("impuestos_json", "[]")));
                 jsonMap.put("items", objectMapper.readTree(datos.getOrDefault("items_json", "[]")));
                 jsonMap.put("pagos", objectMapper.readTree(datos.getOrDefault("pagos_json", "[]")));
+                jsonMap.put("cufeGenerado", cufeGenerado);
                 jsonMap.put("cufe", cufeGenerado);
                 jsonMap.put("qr", urlQr);
                 jsonMap.put("qr_url", urlQr);
 
+                JsonNode nodoFacturaCompleta = objectMapper.valueToTree(jsonMap);
+
+                impresion.imprimirFactura(nodoFacturaCompleta);
+                
             String crediterNoteNumber = datos.getOrDefault("CreditNoteNumber", "N/A");
             boolean esNotaCredito = !crediterNoteNumber.isBlank() && !crediterNoteNumber.equals("N/A");
             if(esNotaCredito){  
