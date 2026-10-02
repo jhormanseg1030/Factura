@@ -6,18 +6,35 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.InputStream;
+
+import org.springframework.core.io.ClassPathResource;
 
 public class TextoImagen {
+
+    public static Font fuenteNueva = null;
+
+    public static Font obtenerFuente(float tamano){
+        if(fuenteNueva == null){
+            try{
+                InputStream is = new ClassPathResource("Lato.ttf").getInputStream();
+                fuenteNueva = Font.createFont(Font.TRUETYPE_FONT, is);
+            }catch(Exception e){
+                fuenteNueva = new Font("Arial", Font.PLAIN, 26);
+            }
+        }
+        return fuenteNueva.deriveFont(tamano);
+    }
+    
     
     public static BufferedImage crearTexto(String texto, int tamanoLetra) {
         if (texto == null || texto.isEmpty()) {
             texto = " ";
         }
+        Font font = obtenerFuente(tamanoLetra);
 
         BufferedImage imgTemp = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         Graphics2D gTemp = imgTemp.createGraphics();
-
-        Font font = new Font("Calibri", Font.ITALIC, tamanoLetra);
         gTemp.setFont(font);
         FontMetrics fm = gTemp.getFontMetrics();
 
@@ -27,7 +44,6 @@ public class TextoImagen {
         gTemp.dispose();
 
         if (ancho <= 0) ancho = 1;
-        if (ancho > 384) ancho = 384;
 
         BufferedImage imagenFinal = new BufferedImage(ancho, alto, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = imagenFinal.createGraphics();

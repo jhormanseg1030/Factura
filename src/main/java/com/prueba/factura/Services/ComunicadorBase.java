@@ -26,7 +26,7 @@ public class ComunicadorBase {
             return null;
         }
 
-        String sql = "SELECT TOP 1 identificacion, nombre, apellido, email, telefono, direccion, fecha_nacimiento" + "FROM dbo.Clientes WHERE identificacion = ?";
+        String sql = "SELECT TOP 1 identificacion, nombre, apellido, email, telefono, direccion, fecha_nacimiento " + "FROM dbo.Clientes WHERE identificacion = ?";
         
         try{
             Map<String, Object> fila = jdbcTemplate.queryForMap(sql, identificacion);
