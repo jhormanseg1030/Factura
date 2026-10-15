@@ -39,7 +39,7 @@ class MiddlewareSimphonyTest {
                 Files.writeString(temporal, xmlContenido, StandardCharsets.UTF_8);
 
                 MiddlewareSimphony middleware = new MiddlewareSimphony();
-                Map<String, String> factura = middleware.extraerDatosFactura(temporal.toFile());
+                Map<String, String> factura = MiddlewareSimphony.extraerDatosFactura(temporal.toFile());
 
         assertEquals("11496", factura.get("numero_ticket"));
         assertEquals("PitaSchnitzel", factura.get("producto"));
@@ -68,7 +68,7 @@ class MiddlewareSimphonyTest {
         Files.writeString(temporal, xmlSinCheck, StandardCharsets.UTF_8);
 
         MiddlewareSimphony middleware = new MiddlewareSimphony();
-        assertThrows(IllegalStateException.class, () -> middleware.extraerDatosFactura(temporal.toFile()));
+        assertThrows(IllegalStateException.class, () -> MiddlewareSimphony.extraerDatosFactura(temporal.toFile()));
 
         Files.deleteIfExists(temporal);
     }
@@ -94,7 +94,7 @@ class MiddlewareSimphonyTest {
                 Files.writeString(temporal, xmlContenido, StandardCharsets.UTF_8);
 
                 MiddlewareSimphony middleware = new MiddlewareSimphony();
-                Map<String, String> factura = middleware.extraerDatosFactura(temporal.toFile());
+                Map<String, String> factura = MiddlewareSimphony.extraerDatosFactura(temporal.toFile());
 
                 assertTrue(factura.get("impuestos_json").contains("\"codigo_impuesto\":\"04\""));
                 assertTrue(factura.get("impuestos_json").contains("\"nombre_impuesto\":\"INC 8%\""));
@@ -145,6 +145,6 @@ class MiddlewareSimphonyTest {
         MiddlewareSimphony middleware = new MiddlewareSimphony();
         File inexistente = new File("C:/ruta/inexistente/prueba.xml");
 
-        assertThrows(IllegalStateException.class, () -> middleware.extraerDatosFactura(inexistente));
+        assertThrows(IllegalStateException.class, () -> MiddlewareSimphony.extraerDatosFactura(inexistente));
     }
 }

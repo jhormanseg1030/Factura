@@ -14,6 +14,7 @@ public class FacturaDto {
     private String total;
     private String qrCode;
     private List<String> items;
+    private String fecha; // fecha de la transacción (formato ISO: yyyy-MM-dd); sirve para diferenciar transacciones
 
     public FacturaDto() {}
 

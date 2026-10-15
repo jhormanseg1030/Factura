@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+
+
+facturas_impresas/
+facturas_historico.json
+facturas_pendientes.json
+facturas_cufes.json
+factura_counter.txt
+~$*.docx

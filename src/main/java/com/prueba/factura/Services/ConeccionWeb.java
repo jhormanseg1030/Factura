@@ -84,7 +84,7 @@ public class ConeccionWeb {
 
             logger.debug("Enviando factura");
 
-            String response = restTemplate.postForObject(url, request, String.class);
+            restTemplate.postForObject(url, request, String.class);
             logger.info("Factura enviada exitosamente");
 
         }catch(HttpClientErrorException e){
@@ -96,7 +96,8 @@ public class ConeccionWeb {
     
     private boolean isValidUrl(String urlString) {
         try {
-            URL url = new URL(urlString);
+            java.net.URI uri = java.net.URI.create(urlString);
+            URL url = uri.toURL();
             return (url.getProtocol().equals("http") || url.getProtocol().equals("https"))
                 && !url.getHost().isEmpty();
         } catch (Exception e) {

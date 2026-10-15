@@ -76,6 +76,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
     @Value ("${app.emission.point.id}")
     private String emissionPointId;
+    @Value ("${app.envio.automatico:true}")
+    private boolean envioAutomatico;
 
     @Autowired
     private FacturaCounterService facturaCounterService;
@@ -852,8 +854,15 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("DocumentType", "01");
             }
                 String jsonPayload = objectMapper.writeValueAsString(jsonMap);
+                String identificadorSeguro = identificadorFactura.replaceAll("[^a-zA-Z0-9._-]", "_");
+                guardarPayloadImpresion(identificadorSeguro, jsonPayload);
+                actualizarHistoricoCheque(datos.getOrDefault("check_id", ""), numeroFacturaCompleto, datos.getOrDefault("fecha_hora", ""));
                 guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
-                enviarHttpPOST(jsonPayload);
+                if (envioAutomatico) {
+                    enviarHttpPOST(jsonPayload);
+                } else {
+                    logger.info("Modo manual activo: NO se envió HTTP. Payload listo en facturas_impresas y registro guardado.");
+                }
             } else {
                 logger.info("La factura no requiere procesamiento de documento fiscal");
             }
@@ -869,14 +878,17 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
     }
 
     private String construirIdentificadorFactura(Map<String, String> datos) {
+        String checkId = datos.getOrDefault("check_id", "");
+
+        // Si hay check_id, incluye fecha/hora: así, si el mismo check llega
+        // en otra fecha, se genera factura nueva (200 en 2026 => factura nueva).
+        if (!checkId.isBlank()) {
+            return "check_id:" + checkId + "|fecha:" + datos.getOrDefault("fecha_hora", "");
+        }
+
         String guid = datos.getOrDefault("guid_transaccion", "");
         if (!guid.isBlank() && !"N/A".equalsIgnoreCase(guid)) {
             return "guid:" + guid;
-        }
-
-        String checkId = datos.getOrDefault("check_id", "");
-        if (!checkId.isBlank()) {
-            return "check_id:" + checkId;
         }
 
         return "ticket:" + datos.getOrDefault("numero_ticket", "")
@@ -915,6 +927,39 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), registros);
         } catch (Exception e) {
             logger.error("No se pudo guardar el registro de CUFE", e);
+        }
+    }
+
+    private void guardarPayloadImpresion(String identificador, String payload) {
+        try {
+            java.nio.file.Path dir = java.nio.file.Paths.get("facturas_impresas");
+            if (!java.nio.file.Files.exists(dir)) {
+                java.nio.file.Files.createDirectories(dir);
+            }
+            java.nio.file.Files.writeString(dir.resolve(identificador + ".json"), payload);
+            logger.info("Payload guardado para reimpresión: {}", identificador);
+        } catch (Exception e) {
+            logger.warn("No se pudo guardar payload de reimpresión: {}", e.getMessage());
+        }
+    }
+
+    private void actualizarHistoricoCheque(String checkId, String numeroFactura, String fechaHora) {
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get("facturas_historico.json");
+            java.util.Map<String, java.util.Map<String, Object>> hist = new java.util.LinkedHashMap<>();
+            if (java.nio.file.Files.exists(path)) {
+                hist = objectMapper.readValue(path.toFile(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            }
+            java.util.Map<String, Object> entry = hist.getOrDefault(checkId, new java.util.LinkedHashMap<>());
+            int usos = (entry.get("usos") instanceof Number n) ? n.intValue() : 0;
+            entry.put("usos", usos + 1);
+            entry.put("ultima_factura", numeroFactura);
+            entry.put("ultima_fecha_hora", fechaHora);
+            hist.put(checkId, entry);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), hist);
+            logger.info("Histórico cheque {} actualizado (usos={}, última factura={})", checkId, usos + 1, numeroFactura);
+        } catch (Exception e) {
+            logger.warn("No se pudo actualizar histórico del cheque {}: {}", checkId, e.getMessage());
         }
     }
 
@@ -999,7 +1044,7 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 logger.warn("Respuesta con estado: {} body: {}", response.statusCode(), response.body());
                 facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code:" + response.statusCode());
             }
-            System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());
+            logger.warn("Respuesta del servidor - Codigo Status {}", response.statusCode());
         }catch(HttpStatusCodeException e){
             logger.error("Error HTTP al enviar datos a la API: {}", e.getStatusCode(), e.getResponseBodyAsString());
             facturaPendienteService.guardarFacturaPendiente(jsonPayload, "HTTP Status code:" + e.getStatusCode());

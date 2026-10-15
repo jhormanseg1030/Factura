@@ -5,6 +5,7 @@ import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +27,9 @@ public class DianController {
 
     @Autowired
     private DianXmlParserService dianParser;
+
+    @Value("${app.cufe.registry.file:facturas_cufes.json}")
+    private String cufeRegistryFile;
 
     @RateLimiter(name = "simularPago", fallbackMethod = "rateLimitFallback")
     @GetMapping("/parsear")
@@ -71,6 +75,35 @@ public class DianController {
             return ResponseEntity.internalServerError()
                     .body("Error al parsear: " + e.getMessage());
         }
+    }
+
+    @GetMapping("/cufe")
+    public ResponseEntity<String> buscarPorCufe(@RequestParam("cufe") String cufe) {
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get(cufeRegistryFile);
+            if (!java.nio.file.Files.exists(path)) {
+                return ResponseEntity.status(404).body("No existe registro de CUFEs");
+
+            }
+            java.util.Map<String, java.util.Map<String, String>> registros = objectMapper.readValue(path.toFile(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            for (java.util.Map.Entry<String, java.util.Map<String, String>> e : registros.entrySet()) {
+                java.util.Map<String, String> v = e.getValue();
+                String c = v.getOrDefault("cufe", "");
+                if (c != null && c.equalsIgnoreCase(cufe)) {
+                    java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+                    out.put("identificador", e.getKey());
+                    out.put("numero_factura", v.getOrDefault("numero_factura_completo", "N/A"));
+                    out.put("cufe", c);
+                    return ResponseEntity.ok(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(out));
+                }
+
+            }
+            return ResponseEntity.status(404).body("CUFE no encontrado");
+        } catch (Exception e) {
+            logger.error("Error buscando CUFE: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Error al buscar CUFE ");
+        }
+
     }
 
     public ResponseEntity<String> rateLimitFallback(Exception e) {

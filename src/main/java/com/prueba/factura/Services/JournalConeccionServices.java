@@ -7,22 +7,27 @@ import org.apache.commons.io.input.TailerListenerAdapter;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @Service
 public class JournalConeccionServices implements CommandLineRunner {
 
     private final TicketParserService parceService;
     private final ConeccionWeb coneccion;
+    private static final Logger logger = LoggerFactory.getLogger(JournalConeccionServices.class);
 
     public JournalConeccionServices(TicketParserService parceService, ConeccionWeb coneccion){
         this.parceService = parceService;
         this.coneccion = coneccion;
     }
 
+    @SuppressWarnings("deprecation")
     @Override
     public void run(String... args){
         File file = new File("C:\\Journal\\Journal.txt");
 
-        System.out.println("Escuchando el simphony "+ file.getAbsolutePath());
+        logger.info("Escuchando el simphony {}", file.getAbsolutePath());
 
         StringBuilder contenido = new StringBuilder();
 
