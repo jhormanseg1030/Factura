@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prueba.factura.Services.DianXmlParserService;
+import com.prueba.factura.Services.RutaArchivoService;
 import com.prueba.factura.dto.DianFacturaDto;
 
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
@@ -28,6 +29,9 @@ public class DianController {
     @Autowired
     private DianXmlParserService dianParser;
 
+    @Autowired
+    private RutaArchivoService rutaArchivoService;
+
     @Value("${app.cufe.registry.file:facturas_cufes.json}")
     private String cufeRegistryFile;
 
@@ -35,13 +39,13 @@ public class DianController {
     @GetMapping("/parsear")
     public ResponseEntity<String> parsearXml(@RequestParam(value = "xmlPath", required = false) String xmlPath) {
         try {
-            String resolvedPath = (xmlPath == null || xmlPath.isBlank())
-                    ? "C:/SimphonyTest/inbox/"
-                    : xmlPath;
+            if (xmlPath == null || xmlPath.isBlank()) {
+                return ResponseEntity.badRequest().body("Debe indicar el archivo XML a procesar");
+            }
 
-            File xmlFile = new File(resolvedPath);
-            if (!xmlFile.exists()) {
-                return ResponseEntity.badRequest().body("El archivo no se encuentra: " + resolvedPath);
+            File xmlFile = rutaArchivoService.resolverPermitido(xmlPath);
+            if (xmlFile == null) {
+                return ResponseEntity.badRequest().body("Acceso Denegado: ruta no permitida o archivo inexistente");
             }
 
             DianFacturaDto factura = dianParser.parsearXml(xmlFile);
@@ -53,16 +57,16 @@ public class DianController {
         } catch (Exception e) {
             logger.error("Error parseando XML DIAN: {}", e.getMessage());
             return ResponseEntity.internalServerError()
-                    .body("Error al parsear el XML DIAN: " + e.getMessage());
+                    .body("Error al procesar la solicitud. Contacte con el administrador.");
         }
     }
 
     @GetMapping("/parsear/basicos")
     public ResponseEntity<String> parsearBasicos(@RequestParam(value = "xmlPath") String xmlPath) {
         try {
-            File xmlFile = new File(xmlPath);
-            if (!xmlFile.exists()) {
-                return ResponseEntity.badRequest().body("El archivo no se encuentra");
+            File xmlFile = rutaArchivoService.resolverPermitido(xmlPath);
+            if (xmlFile == null) {
+                return ResponseEntity.badRequest().body("Acceso Denegado: ruta no permitida o archivo inexistente");
             }
 
             java.util.Map<String, String> datos = dianParser.extraerDatosBasicos(xmlFile);
@@ -73,7 +77,7 @@ public class DianController {
         } catch (Exception e) {
             logger.error("Error parseando XML DIAN: {}", e.getMessage());
             return ResponseEntity.internalServerError()
-                    .body("Error al parsear: " + e.getMessage());
+                    .body("Error al procesar la solicitud. Contacte con el administrador.");
         }
     }
 
@@ -83,7 +87,6 @@ public class DianController {
             java.nio.file.Path path = java.nio.file.Paths.get(cufeRegistryFile);
             if (!java.nio.file.Files.exists(path)) {
                 return ResponseEntity.status(404).body("No existe registro de CUFEs");
-
             }
             java.util.Map<String, java.util.Map<String, String>> registros = objectMapper.readValue(path.toFile(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
             for (java.util.Map.Entry<String, java.util.Map<String, String>> e : registros.entrySet()) {
@@ -96,14 +99,12 @@ public class DianController {
                     out.put("cufe", c);
                     return ResponseEntity.ok(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(out));
                 }
-
             }
             return ResponseEntity.status(404).body("CUFE no encontrado");
         } catch (Exception e) {
             logger.error("Error buscando CUFE: {}", e.getMessage());
-            return ResponseEntity.internalServerError().body("Error al buscar CUFE ");
+            return ResponseEntity.internalServerError().body("Error al buscar CUFE");
         }
-
     }
 
     public ResponseEntity<String> rateLimitFallback(Exception e) {

@@ -13,31 +13,39 @@
 - **Histórico por cheque** (`facturas_historico.json`): usos, última factura/fecha.
 - **Notas de crédito**: endpoint `GET /api/dian/cufe?cufe=...` (lookup en registro).
 - **Panel admin/config** (solo lectura): `GET /api/admin/config` (secretos enmascarados).
+- **Reintentos por ID estable** (h-hardening): la cola usa `id` UUID y el job
+  `ReintentarFacturasJob` ya no opera por índice.
+- **Seguridad de rutas (anti path traversal)**: `RutaArchivoService` valida que todo
+  XML leído por los endpoints esté dentro de carpetas autorizadas.
 
 ## Pendiente (funcionalidad)
-- Botón de descarga/subida en la interfaz externa (frontend) → usar `POST /api/impresion/reimprimir`.
-- Histórico avanzado (movimientos detallados) si se requiere.
-- Panel admin con edición/clave WS (si el jefe lo pide).
-- Integración real con la interfaz externa (no está conectada en este repo).
+- [ ] Botón de descarga/subida en la interfaz externa (frontend) → usar `POST /api/impresion/reimprimir`.
+- [ ] Histórico avanzado (movimientos detallados) si se requiere.
+- [ ] Panel admin con edición/clave WS (si el jefe lo pide).
+- [ ] Integración real con la interfaz externa (no está conectada en este repo).
+- [ ] **RayBag**: falta definir qué es + política de retención 1 mes.
 
 ## Pendiente (calidad/hardening)
-- Warnings de pom/dependencias (org.json duplicado, etc.).
-- Deprecations (ConeccionWeb, Journal tailer).
-- Logging centralizado (sustituir algunos `System.out`).
-- Revisión de seguridad (path traversal en DianController, LFI reportada).
+- [ ] Rendimiento: medir endpoints/watcher con carga real (watcher usa `Thread.sleep(500)`).
+- [ ] Warnings de pom/dependencias (org.json duplicado en classpath).
+- [ ] Deprecations restantes (Tailer de commons-io).
+- [ ] Logging centralizado (quedan `System.out` en `ProbadorCufe`).
+- [ ] RateLimiter: la firma del método `fallback` no coincide con la del método original.
 
 ## Sin completar / depende de ambiente
-- Prueba real de impresión física (impresora IP en `impresora.ip`).
-- Validación end-to-end con tickets reales (watcher de Simphony).
+- [ ] Prueba real de impresión física (impresora IP en `impresora.ip`).
+- [ ] Validación end-to-end con tickets reales (watcher de Simphony).
 
 ## Endpoints principales (MVP)
-- `GET /api/dian/parsear?xmlPath=...`
-- `GET /api/dian/parsear/basicos?xmlPath=...`
+- `GET /api/dian/parsear?xmlPath=...` (ruta validada)
+- `GET /api/dian/parsear/basicos?xmlPath=...` (ruta validada)
 - `GET /api/dian/cufe?cufe=...`
-- `POST /api/test/simular-pago?xmlPath=...`
+- `GET /api/test/simular-pago?xmlPath=...` (ruta validada)
 - `POST /api/impresion`
 - `POST /api/impresion/reimprimir`
+- `GET /api/impresion/pendientes-total`
 - `GET /api/admin/config`
+- `GET /api/admin/historico-checks`
 
 ## How to verify
 ```bash
@@ -47,11 +55,14 @@ mvn test
 
 ## Archivos clave
 - `src/main/java/com/prueba/factura/Services/MiddlewareSimphony.java`
+- `src/main/java/com/prueba/factura/Services/FacturaPendienteService.java`
+- `src/main/java/com/prueba/factura/Services/ReintentarFacturasJob.java`
+- `src/main/java/com/prueba/factura/Services/RutaArchivoService.java`
 - `src/main/java/com/prueba/factura/controller/DianController.java`
 - `src/main/java/com/prueba/factura/controller/ImpresionFactura.java`
 - `src/main/java/com/prueba/factura/controller/ConfigController.java`
+- `src/main/java/com/prueba/factura/controller/TestController.java`
 - `src/main/java/com/prueba/factura/dto/FacturaDto.java`
 - `src/main/java/com/prueba/factura/Services/TicketParserService.java`
-- `src/main/java/com/prueba/factura/Services/FacturaPendienteService.java`
 - `src/main/resources/application.properties`
-- `pendientes por revisar: PENDIENTES_MVP.md`
+- `PENDIENTES_MVP.md`

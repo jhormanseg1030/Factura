@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +34,7 @@ public class FacturaPendienteService {
             List<Map<String, Object>> pendientes = leerPendientes();
 
             Map<String, Object> factura = new java.util.LinkedHashMap<>();
-            factura.put("id", java.util.UUID.randomUUID().toString());   // ID ESTABLE
+            factura.put("id", UUID.randomUUID().toString());   // ID ESTABLE
             factura.put("json_payload", jsonPayload);
             factura.put("fecha_procesamiento", LocalDateTime.now().toString());
             factura.put("fecha_transaccion", java.time.LocalDate.now().toString());  // fecha para diferenciar transacciones
@@ -59,7 +60,21 @@ public class FacturaPendienteService {
             if (contenido.isEmpty()) {
                 return new ArrayList<>();
             }
-            return objectMapper.readValue(contenido, new TypeReference<List<Map<String, Object>>>() {});
+            List<Map<String, Object>> pendientes = objectMapper.readValue(contenido, new TypeReference<List<Map<String, Object>>>() {});
+
+            // Registros antiguos pueden no tener id: se les asigna uno para poder operarlos de forma segura.
+            boolean cambio = false;
+            for (Map<String, Object> factura : pendientes) {
+                Object id = factura.get("id");
+                if (id == null || id.toString().isBlank()) {
+                    factura.put("id", UUID.randomUUID().toString());
+                    cambio = true;
+                }
+            }
+            if (cambio) {
+                guardarPendientes(pendientes);
+            }
+            return pendientes;
         } catch (IOException e) {
             logger.error("Error leyendo facturas pendientes: {}", e.getMessage());
             return new ArrayList<>();
@@ -75,29 +90,56 @@ public class FacturaPendienteService {
         }
     }
 
-    public synchronized void incrementarIntento(int index) {
-        List<Map<String, Object>> pendientes = leerPendientes();
-        if (index >= 0 && index < pendientes.size()) {
-            Map<String, Object> factura = pendientes.get(index);
-            int intentos = (int) factura.getOrDefault("intentos", 0);
-            factura.put("intentos", intentos + 1);
-            factura.put("ultimo_intento", LocalDateTime.now().toString());
-            guardarPendientes(pendientes);
+    /** Incrementa el contador de intentos de una factura identificada por su id. */
+    public synchronized void incrementarIntentoPorId(String id) {
+        if (id == null || id.isBlank()) {
+            logger.warn("No se puede incrementar intento: id vacío");
+            return;
         }
+        List<Map<String, Object>> pendientes = leerPendientes();
+        for (Map<String, Object> factura : pendientes) {
+            if (id.equals(factura.get("id"))) {
+                int intentos = leerIntentos(factura);
+                factura.put("intentos", intentos + 1);
+                factura.put("ultimo_intento", LocalDateTime.now().toString());
+                guardarPendientes(pendientes);
+                logger.info("Intento registrado para factura pendiente {}", id);
+                return;
+            }
+        }
+        logger.warn("No se encontró la factura pendiente con id {}", id);
     }
 
-    public synchronized void eliminarFacturaPendiente(int index) {
+    /** Elimina de la cola la factura identificada por su id (no por posición). */
+    public synchronized void eliminarPorId(String id) {
+        if (id == null || id.isBlank()) {
+            logger.warn("No se puede eliminar: id vacío");
+            return;
+        }
         List<Map<String, Object>> pendientes = leerPendientes();
-        if (index >= 0 && index < pendientes.size()) {
-            pendientes.remove(index);
+        boolean eliminada = pendientes.removeIf(factura -> id.equals(factura.get("id")));
+        if (eliminada) {
             guardarPendientes(pendientes);
-            logger.info("Factura eliminada de cola pendiente. Restantes: {}", pendientes.size());
+            logger.info("Factura eliminada de cola pendiente (id={}). Restantes: {}", id, pendientes.size());
+        } else {
+            logger.warn("No se encontró la factura pendiente con id {} para eliminar", id);
         }
     }
 
     public boolean superaMaximoIntentos(Map<String, Object> factura) {
-        int intentos = (int) factura.getOrDefault("intentos", 0);
-        return intentos >= MAX_INTENTOS;
+        return leerIntentos(factura) >= MAX_INTENTOS;
+    }
+
+    private int leerIntentos(Map<String, Object> factura) {
+        Object value = factura.get("intentos");
+        if (value instanceof Number numero) {
+            return numero.intValue();
+        }
+        try {
+            return value == null ? 0 : Integer.parseInt(value.toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     public int totalPendientes() {
