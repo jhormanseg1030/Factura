@@ -11,12 +11,20 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.prueba.factura.Services.MetricasService;
+import com.prueba.factura.Services.RetencionArchivoService;
 
 @RestController
 @RequestMapping("/api/admin")
 public class ConfigController {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Autowired
+    private MetricasService metricasService;
+
+    @Autowired
+    private RetencionArchivoService retencionArchivoService;
 
     @Value("${app.inbox.directory:}")
     private String inboxDirectory;
@@ -75,6 +83,16 @@ public class ConfigController {
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Error leyendo histórico: " + e.getMessage());
         }
+    }
+
+    @GetMapping("/performance")
+    public ResponseEntity<?> performance() {
+        return ResponseEntity.ok(metricasService.resumen());
+    }
+
+    @GetMapping("/raybag")
+    public ResponseEntity<?> raybag() {
+        return ResponseEntity.ok(retencionArchivoService.estado());
     }
 
     private String maskSecret(String v) {

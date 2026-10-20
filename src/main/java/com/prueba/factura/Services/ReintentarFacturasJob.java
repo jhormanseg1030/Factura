@@ -28,6 +28,9 @@ public class ReintentarFacturasJob {
     @Autowired
     private FacturaPendienteService facturaPendienteService;
 
+    @Autowired
+    private MetricasService metricasService;
+
     @Value("${app.webhook.url}")
     private String apiUrl;
 
@@ -42,6 +45,15 @@ public class ReintentarFacturasJob {
 
     @Scheduled(fixedDelayString = "${app.reintento.delay:60000}")
     public void reintentarFacturasPendientes() {
+        long inicioCiclo = System.nanoTime();
+        try {
+            ejecutarCicloReintentos();
+        } finally {
+            metricasService.registrar("reintento.ciclo", System.nanoTime() - inicioCiclo);
+        }
+    }
+
+    private void ejecutarCicloReintentos() {
         List<Map<String, Object>> pendientes = facturaPendienteService.leerPendientes();
 
         if (pendientes.isEmpty()) {

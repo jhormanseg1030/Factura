@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prueba.factura.Services.DianXmlParserService;
+import com.prueba.factura.Services.MetricasService;
 import com.prueba.factura.Services.RutaArchivoService;
 import com.prueba.factura.dto.DianFacturaDto;
 
@@ -32,12 +33,16 @@ public class DianController {
     @Autowired
     private RutaArchivoService rutaArchivoService;
 
+    @Autowired
+    private MetricasService metricasService;
+
     @Value("${app.cufe.registry.file:facturas_cufes.json}")
     private String cufeRegistryFile;
 
     @RateLimiter(name = "simularPago", fallbackMethod = "rateLimitFallback")
     @GetMapping("/parsear")
     public ResponseEntity<String> parsearXml(@RequestParam(value = "xmlPath", required = false) String xmlPath) {
+        long inicio = System.nanoTime();
         try {
             if (xmlPath == null || xmlPath.isBlank()) {
                 return ResponseEntity.badRequest().body("Debe indicar el archivo XML a procesar");
@@ -58,11 +63,14 @@ public class DianController {
             logger.error("Error parseando XML DIAN: {}", e.getMessage());
             return ResponseEntity.internalServerError()
                     .body("Error al procesar la solicitud. Contacte con el administrador.");
+        } finally {
+            metricasService.registrar("api.dian.parsear", System.nanoTime() - inicio);
         }
     }
 
     @GetMapping("/parsear/basicos")
     public ResponseEntity<String> parsearBasicos(@RequestParam(value = "xmlPath") String xmlPath) {
+        long inicio = System.nanoTime();
         try {
             File xmlFile = rutaArchivoService.resolverPermitido(xmlPath);
             if (xmlFile == null) {
@@ -78,6 +86,8 @@ public class DianController {
             logger.error("Error parseando XML DIAN: {}", e.getMessage());
             return ResponseEntity.internalServerError()
                     .body("Error al procesar la solicitud. Contacte con el administrador.");
+        } finally {
+            metricasService.registrar("api.dian.parsearBasicos", System.nanoTime() - inicio);
         }
     }
 

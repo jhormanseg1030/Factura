@@ -91,6 +91,9 @@ public class MiddlewareSimphony implements CommandLineRunner {
     @Autowired
     private ComunicadorBase comunicadorBase;
 
+    @Autowired
+    private MetricasService metricasService;
+
     private final HttpClient client = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(5))
@@ -136,7 +139,9 @@ public class MiddlewareSimphony implements CommandLineRunner {
                                 File xmlFile = new File(dirInbox, nombreArchivo);
 
                                 Thread.sleep(500);
+                                long inicioWatcher = System.nanoTime();
                                 procesarXML(xmlFile);
+                                metricasService.registrar("watcher.procesarXML", System.nanoTime() - inicioWatcher);
                             }
                         }
                     }
@@ -684,6 +689,7 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
     }
 
     public void procesarXML(File xmlFile){
+        long inicioProceso = System.nanoTime();
         try{
             Map<String, String> datos = extraerDatosFactura(xmlFile);
 
@@ -874,6 +880,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
         } catch(Exception e){
             logger.error("ERROR procesando el archivo XML {}: {}", xmlFile.getName(), e.getMessage(), e);
+        } finally {
+            metricasService.registrar("procesarXML", System.nanoTime() - inicioProceso);
         }
     }
 
@@ -1018,6 +1026,7 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
 
     private void enviarHttpPOST(String jsonPayload){
+        long inicioEnvio = System.nanoTime();
         try{
             String destino = (targetUrl != null && !targetUrl.isBlank()) ? targetUrl : apiUrl;
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -1051,6 +1060,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
         }catch(Exception e){
             logger.error("Error al enviar la solicitud Http POST guardando en cola pendiente", e);
             facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
+        } finally {
+            metricasService.registrar("envioHttpPOST", System.nanoTime() - inicioEnvio);
         }
     }
 

@@ -17,6 +17,12 @@
   `ReintentarFacturasJob` ya no opera por índice.
 - **Seguridad de rutas (anti path traversal)**: `RutaArchivoService` valida que todo
   XML leído por los endpoints esté dentro de carpetas autorizadas.
+- **Rendimiento (medición)**: `MetricasService` mide en memoria los tiempos de
+  `procesarXML`, `watcher.procesarXML`, `envioHttpPOST`, `reintento.ciclo` y los
+  endpoints DIAN. Se consultan en `GET /api/admin/performance` (muestras/min/prom/max).
+- **Retención RayBag (30 días)**: `RetencionArchivoService` archiva (mueve, **no
+  borra**) los archivos con más de 30 días a `<carpeta>/archivo/yyyy-MM/`, con job
+  diario (2:15 AM). Estado en `GET /api/admin/raybag`.
 
 ## Pendiente (funcionalidad)
 - [ ] Botón de descarga/subida en la interfaz externa (frontend) → usar `POST /api/impresion/reimprimir`.
@@ -46,6 +52,8 @@
 - `GET /api/impresion/pendientes-total`
 - `GET /api/admin/config`
 - `GET /api/admin/historico-checks`
+- `GET /api/admin/performance`
+- `GET /api/admin/raybag`
 
 ## How to verify
 ```bash
@@ -58,6 +66,8 @@ mvn test
 - `src/main/java/com/prueba/factura/Services/FacturaPendienteService.java`
 - `src/main/java/com/prueba/factura/Services/ReintentarFacturasJob.java`
 - `src/main/java/com/prueba/factura/Services/RutaArchivoService.java`
+- `src/main/java/com/prueba/factura/Services/MetricasService.java`
+- `src/main/java/com/prueba/factura/Services/RetencionArchivoService.java`
 - `src/main/java/com/prueba/factura/controller/DianController.java`
 - `src/main/java/com/prueba/factura/controller/ImpresionFactura.java`
 - `src/main/java/com/prueba/factura/controller/ConfigController.java`
