@@ -29,10 +29,10 @@
 - [ ] Histórico avanzado (movimientos detallados) si se requiere.
 - [ ] Panel admin con edición/clave WS (si el jefe lo pide).
 - [ ] Integración real con la interfaz externa (no está conectada en este repo).
-- [ ] **RayBag**: falta definir qué es + política de retención 1 mes.
+- [ ] **RayBag**: la retención de 30 días ya está implementada; falta **confirmar con el jefe** qué es exactamente "RayBag" (si es otra cosa, se ajusta en `app.raybag.*`).
 
 ## Pendiente (calidad/hardening)
-- [ ] Rendimiento: medir endpoints/watcher con carga real (watcher usa `Thread.sleep(500)`).
+- [ ] Rendimiento: la medición ya existe (`/api/admin/performance`); falta **carga real** para analizar resultados y ajustar el `Thread.sleep(500)` del watcher.
 - [ ] Warnings de pom/dependencias (org.json duplicado en classpath).
 - [ ] Deprecations restantes (Tailer de commons-io).
 - [ ] Logging centralizado (quedan `System.out` en `ProbadorCufe`).
