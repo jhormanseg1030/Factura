@@ -1,4 +1,4 @@
-﻿package com.prueba.factura.Services;
+package com.prueba.factura.Services;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -33,7 +33,7 @@ public class FacturaPendienteService {
             List<Map<String, Object>> pendientes = leerPendientes();
 
             Map<String, Object> factura = new java.util.LinkedHashMap<>();
-            factura.put("id", java.util.UUID.randomUUID().toString()),    // ID ESTABLE
+            factura.put("id", java.util.UUID.randomUUID().toString());   // ID ESTABLE
             factura.put("json_payload", jsonPayload);
             factura.put("fecha_procesamiento", LocalDateTime.now().toString());
             factura.put("fecha_transaccion", java.time.LocalDate.now().toString());  // fecha para diferenciar transacciones
