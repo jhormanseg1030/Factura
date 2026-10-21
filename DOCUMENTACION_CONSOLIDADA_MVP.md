@@ -1,5 +1,5 @@
 FACTURA (MVP) - CAMBIOS REALIZADOS
-Proyecto: C:\Users\sopor\Desktop\Factura
+Proyecto: `C:\Users\sopor\Desktop\Factura`
 Verificacion: mvn compile (OK) y mvn test (8/8 OK)
 
 ======================================================================
