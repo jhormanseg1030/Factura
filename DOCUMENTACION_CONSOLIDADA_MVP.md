@@ -1,206 +1,215 @@
-FACTURA (MVP) - CAMBIOS REALIZADOS
-Proyecto: `C:\Users\sopor\Desktop\Factura`
-Verificacion: mvn compile (OK) y mvn test (8/8 OK)
+# FACTURA (MVP) — Cambios realizados
 
-======================================================================
-1) FECHA EN TRANSACCIONES
-======================================================================
-Que hicimos: Agregamos la fecha a la factura y a la cola de pendientes.
-Donde: FacturaDto.java linea 17 | TicketParserService.java lineas 59-62 | FacturaPendienteService.java linea 40
-Para que sirve: Poder diferenciar transacciones del mismo dia y agrupar por fecha.
-Como funciona: Si el ticket no trae fecha, el parser le pone la del dia; al encolar una factura fallida se guarda su fecha de transaccion.
-Codigo:
-  // FacturaDto.java
-  private String fecha;
+**Proyecto:** C:\Users\sopor\Desktop\Factura
+**Verificación:** mvn compile (OK) · mvn test (8/8 OK)
 
-  // TicketParserService.java
-  if (factura.getFecha() == null || factura.getFecha().isBlank()) {
-      factura.setFecha(java.time.LocalDate.now().toString());
-  }
+> Versión en Word: `FACTURA - Cambios MVP (documentacion).docx`
 
-  // FacturaPendienteService.java
-  factura.put("fecha_transaccion", java.time.LocalDate.now().toString());
+## Resumen
+- Fecha en las transacciones para poder diferenciarlas.
+- Cheque reutilizado en otra fecha = factura nueva, con historial de usos.
+- Reimpresión de un ticket sin recalcularlo (se guarda el JSON original).
+- Modo manual: genera e imprime, pero no envía al portal.
+- Panel de administración de solo lectura (configuración y estado).
+- Notas de crédito: buscar la factura por CUFE.
+- Cola de reintentos con ID único (ya no se procesa la factura equivocada).
+- Seguridad: los endpoints solo leen archivos de carpetas autorizadas.
+- Medición de rendimiento y retención de 30 días sin borrar nada.
 
-======================================================================
-2) REUSO DE CHEQUE GENERA FACTURA NUEVA
-======================================================================
-Que hicimos: El identificador de la factura ahora incluye la fecha, y llevamos el conteo de usos de cada cheque.
-Donde: MiddlewareSimphony.java lineas 888-899 (construirIdentificadorFactura), 954-974 (actualizarHistoricoCheque) y 865 (llamada)
-Para que sirve: Que un cheque repetido en otra fecha genere factura nueva (no reusa la vieja) y quede trazabilidad.
-Como funciona: La llave se busca en facturas_cufes.json; como ahora lleva fecha, el cheque repetido no la encuentra y entra al flujo de factura nueva; el uso se suma en facturas_historico.json.
-Codigo:
-  // MiddlewareSimphony.java - construirIdentificadorFactura()
-  String checkId = datos.getOrDefault("check_id", "");
-  if (!checkId.isBlank()) {
-      return "check_id:" + checkId + "|fecha:" + datos.getOrDefault("fecha_hora", "");
-  }
+---
 
-  // actualizarHistoricoCheque()
-  entry.put("usos", usos + 1);
-  entry.put("ultima_factura", numeroFactura);
-  entry.put("ultima_fecha_hora", fechaHora);
+## 1. Fecha en transacciones
+- **Qué se hizo:** Se agregó la fecha a la factura y a la cola de pendientes.
+- **Dónde:** `FacturaDto.java:17` · `TicketParserService.java:59-62` · `FacturaPendienteService.java:40`
+- **Para qué:** Diferenciar transacciones del mismo día y agrupar por fecha.
+- **Cómo funciona:** Si el ticket no trae fecha, el parser le pone la del día; al encolar una factura fallida se guarda su fecha de transacción.
 
-======================================================================
-3) NOTAS DE CREDITO - BUSCAR CUFE
-======================================================================
-Que hicimos: Endpoint para localizar una factura por su CUFE.
-Donde: DianController.java lineas 94-118
-Para que sirve: Saber que factura se esta nota de credito.
-Como funciona: Lee facturas_cufes.json, compara el CUFE recibido y devuelve identificador y numero de factura (404 si no existe).
-Codigo:
-  // DianController.java - GET /api/dian/cufe?cufe=...
-  for (Map.Entry<String, Map<String, String>> e : registros.entrySet()) {
-      String c = e.getValue().getOrDefault("cufe", "");
-      if (c != null && c.equalsIgnoreCase(cufe)) {
-          out.put("identificador", e.getKey());
-          out.put("numero_factura", e.getValue().get("numero_factura_completo"));
-          return ResponseEntity.ok(...);
-      }
-  }
+```java
+// FacturaDto.java
+private String fecha;
 
-======================================================================
-4) REIMPRESION SIN RECALCULAR
-======================================================================
-Que hicimos: Guardamos el JSON original de cada factura y agregamos un endpoint para reimprimirla.
-Donde: MiddlewareSimphony.java lineas 941-951 (guardarPayloadImpresion) y 864 (llamada) | ImpresionFactura.java lineas 45-65 (POST /api/impresion/reimprimir)
-Para que sirve: Reimprimir un ticket ya emitido sin recalcular CUFE ni generar otra factura.
-Como funciona: El payload se guarda en facturas_impresas/{id}.json; el endpoint lo lee y lo manda al servicio de impresion (socket a la impresora).
-Codigo:
-  // MiddlewareSimphony.java - guardarPayloadImpresion()
-  java.nio.file.Files.writeString(dir.resolve(identificador + ".json"), payload);
+// TicketParserService.java
+if (factura.getFecha() == null || factura.getFecha().isBlank()) {
+    factura.setFecha(java.time.LocalDate.now().toString());
+}
 
-  // ImpresionFactura.java - POST /api/impresion/reimprimir
-  String nombre = identificador.replaceAll("[^a-zA-Z0-9._-]", "_") + ".json";
-  java.nio.file.Path path = java.nio.file.Paths.get("facturas_impresas", nombre);
-  String payload = java.nio.file.Files.readString(path);
-  impresionService.imprimirFactura(objectMapper.readTree(payload));
+// FacturaPendienteService.java
+factura.put("fecha_transaccion", java.time.LocalDate.now().toString());
+```
 
-======================================================================
-5) MODO MANUAL (NO ENVIA AL PORTAL)
-======================================================================
-Que hicimos: Un flag que apaga el envio automatico al portal.
-Donde: application.properties linea 12 (app.envio.automatico) | MiddlewareSimphony.java lineas 80 y 867-872
-Para que sirve: Generar, imprimir y guardar la factura, pero subirla despues a mano.
-Como funciona: Todo se procesa igual; solo el envio HTTP queda pendiente y se loguea "Modo manual activo".
-Codigo:
-  // application.properties
-  app.envio.automatico=false
+## 2. Reuso de cheque genera factura nueva
+- **Qué se hizo:** El identificador de la factura ahora incluye la fecha y se lleva el conteo de usos de cada cheque.
+- **Dónde:** `MiddlewareSimphony.java:888-899, 954-974, 865`
+- **Para qué:** Que un cheque repetido en otra fecha genere factura nueva (no reusa la vieja) y quede trazabilidad.
+- **Cómo funciona:** La llave se busca en `facturas_cufes.json`; como ahora lleva fecha, el cheque repetido no la encuentra y entra al flujo de factura nueva. El uso se suma en `facturas_historico.json`.
 
-  // MiddlewareSimphony.java
-  if (envioAutomatico) {
-      enviarHttpPOST(jsonPayload);
-  } else {
-      logger.info("Modo manual activo: NO se envio HTTP. Payload listo en facturas_impresas...");
-  }
+```java
+// MiddlewareSimphony.java - construirIdentificadorFactura()
+String checkId = datos.getOrDefault("check_id", "");
+if (!checkId.isBlank()) {
+    return "check_id:" + checkId + "|fecha:" + datos.getOrDefault("fecha_hora", "");
+}
 
-======================================================================
-6) PANEL DE ADMINISTRACION (SOLO LECTURA)
-======================================================================
-Que hicimos: Endpoints para ver configuracion y estado del sistema sin tocar codigo.
-Donde: ConfigController.java (archivo nuevo) | ImpresionFactura.java lineas 67-71
-Para que sirve: Que el jefe vea la configuracion, el historial, el rendimiento y la retencion sin entrar al proyecto.
-Como funciona: Lee las propiedades con @Value y las devuelve en JSON; la API key va enmascarada.
-Codigo:
-  // ConfigController.java
-  @Value("${app.envio.automatico:true}")
-  private boolean envioAutomatico;
+// actualizarHistoricoCheque()
+entry.put("usos", usos + 1);
+entry.put("ultima_factura", numeroFactura);
+```
 
-  @GetMapping("/config")
-  public ResponseEntity<Map<String, Object>> config() {
-      Map<String, Object> cfg = new LinkedHashMap<>();
-      cfg.put("app.envio.automatico", envioAutomatico);
-      return ResponseEntity.ok(cfg);
-  }
-  Endpoints: /api/admin/config, /api/admin/historico-checks, /api/admin/performance,
-             /api/admin/raybag, /api/impresion/pendientes-total
+## 3. Notas de crédito: buscar CUFE
+- **Qué se hizo:** Endpoint para localizar una factura por su CUFE.
+- **Dónde:** `DianController.java:94-118` → `GET /api/dian/cufe?cufe=...`
+- **Para qué:** Saber qué factura es la que se está nota de crédito.
+- **Cómo funciona:** Lee `facturas_cufes.json`, compara el CUFE recibido y devuelve identificador y número de factura (404 si no existe).
 
-======================================================================
-7) COLA DE REINTENTOS CON ID UNICO
-======================================================================
-Que hicimos: Cada factura pendiente tiene id unico y el job trabaja por id, no por posicion.
-Donde: FacturaPendienteService.java lineas 37, 66-75, 94-112, 114-128, 133-142 | ReintentarFacturasJob.java lineas 43-90
-Para que sirve: Que el reintento nunca procese, incremente o borre la factura equivocada.
-Como funciona: El servicio genera el UUID al encolar (y se lo asigna a los registros antiguos); el job pide eliminar o incrementar por id, y cada operacion relee el archivo y busca ese id.
-Codigo:
-  // FacturaPendienteService.java
-  factura.put("id", UUID.randomUUID().toString());
+```java
+for (Map.Entry<String, Map<String, String>> e : registros.entrySet()) {
+    String c = e.getValue().getOrDefault("cufe", "");
+    if (c != null && c.equalsIgnoreCase(cufe)) {
+        out.put("identificador", e.getKey());
+        out.put("numero_factura", e.getValue().get("numero_factura_completo"));
+    }
+}
+```
 
-  public synchronized void eliminarPorId(String id) {
-      List<Map<String, Object>> pendientes = leerPendientes();
-      boolean eliminada = pendientes.removeIf(f -> id.equals(f.get("id")));
-      if (eliminada) guardarPendientes(pendientes);
-  }
+## 4. Reimpresión sin recalcular
+- **Qué se hizo:** Se guarda el JSON original de cada factura y se agrega un endpoint para reimprimirla.
+- **Dónde:** `MiddlewareSimphony.java:941-951, 864` · `ImpresionFactura.java:45-65`
+- **Para qué:** Reimprimir un ticket ya emitido sin recalcular el CUFE ni generar otra factura.
+- **Cómo funciona:** El payload se guarda en `facturas_impresas/{id}.json`; el endpoint lo lee y lo manda al servicio de impresión (socket a la impresora).
 
-======================================================================
-8) SEGURIDAD DE RUTAS (PATH TRAVERSAL)
-======================================================================
-Que hicimos: Los endpoints que leen XML solo aceptan archivos de carpetas autorizadas y ya no muestran errores internos.
-Donde: RutaArchivoService.java (archivo nuevo) | application.properties linea 24 (app.rutas.permitidas) | DianController.java lineas 43-92 | TestController.java lineas 37-56
-Para que sirve: Evitar que alguien lea archivos ajenos del servidor y no filtrar datos internos.
-Como funciona: Se resuelve la ruta canonica y se compara con las carpetas base (inbox, processed y app.rutas.permitidas); si no esta dentro, responde 400 Acceso Denegado. Para sumar una carpeta, se agrega en app.rutas.permitidas.
-Codigo:
-  // RutaArchivoService.java - resolverPermitido()
-  File archivo = new File(ruta).getCanonicalFile();
-  Path destino = archivo.toPath().toAbsolutePath().normalize();
-  for (String base : basesPermitidas()) {
-      if (destino.startsWith(Paths.get(base).toAbsolutePath().normalize())) {
-          return archivo;   // permitido
-      }
-  }
-  return null;   // fuera de las carpetas autorizadas
+```java
+// MiddlewareSimphony.java
+java.nio.file.Files.writeString(dir.resolve(identificador + ".json"), payload);
 
-======================================================================
-9) MEDICION DE RENDIMIENTO
-======================================================================
-Que hicimos: Medimos cuanto demora cada operacion clave y lo exponemos por API.
-Donde: MetricasService.java (archivo nuevo) | MiddlewareSimphony.java lineas 144, 884, 1064 | ReintentarFacturasJob.java (reintento.ciclo) | DianController.java (parseo DIAN) | ConfigController.java (/api/admin/performance)
-Para que sirve: Saber con datos donde esta el cuello de botella (parseo, envio HTTP o reintentos).
-Como funciona: Cada punto medido registra el tiempo en memoria y el endpoint devuelve por operacion: muestras, minimo, promedio y maximo en ms.
-Codigo:
-  // instrumentacion (MiddlewareSimphony / DianController / ReintentarFacturasJob)
-  long inicio = System.nanoTime();
-  try {
-      ... operacion ...
-  } finally {
-      metricasService.registrar("procesarXML", System.nanoTime() - inicio);
-  }
+// ImpresionFactura.java - POST /api/impresion/reimprimir
+String nombre = identificador.replaceAll("[^a-zA-Z0-9._-]", "_") + ".json";
+java.nio.file.Path path = java.nio.file.Paths.get("facturas_impresas", nombre);
+impresionService.imprimirFactura(objectMapper.readTree(
+        java.nio.file.Files.readString(path)));
+```
 
-======================================================================
-10) RETENCION RAYBAG (30 DIAS, NO BORRA)
-======================================================================
-Que hicimos: Job diario que archiva lo que ya cumplio 30 dias (lo mueve, nunca lo borra).
-Donde: RetencionArchivoService.java (archivo nuevo) | application.properties lineas 27-30 | ConfigController.java (/api/admin/raybag)
-Para que sirve: Cumplir la retencion de un mes sin perder informacion.
-Como funciona: Recorre las carpetas de app.raybag.directorios y mueve los archivos con mas de 30 dias a archivo/yyyy-MM/; corre a las 2:15 AM.
-Codigo:
-  // RetencionArchivoService.java
-  long cutoff = System.currentTimeMillis() - (diasRetencion * 24L * 60L * 60L * 1000L);
-  if (Files.getLastModifiedTime(archivo).toMillis() < cutoff) {
-      Files.move(archivo, destino, StandardCopyOption.REPLACE_EXISTING);  // archiva, no borra
-  }
+## 5. Modo manual (no envía al portal)
+- **Qué se hizo:** Un flag que apaga el envío automático al portal.
+- **Dónde:** `application.properties:12` · `MiddlewareSimphony.java:80, 867-872`
+- **Para qué:** Generar, imprimir y guardar la factura, pero subirla después a mano.
+- **Cómo funciona:** Todo se procesa igual; solo el envío HTTP queda pendiente y se loguea "Modo manual activo".
 
-======================================================================
-11) LIMPIEZAS MENORES
-======================================================================
-Que hicimos: Quitamos warnings y dejamos el codigo prolijo.
-Donde: ConeccionWeb.java | JournalConeccionServices.java | ImpresionFactura.java | MiddlewareSimphony.java | MiddlewareSimphonyTest.java | .gitignore
-Para que sirve: Que no haya ruido en el editor ni se suban archivos generados al repositorio.
-Como funciona: Cambios puntuales de codigo y exclusiones en .gitignore.
-Codigo:
-  // ConeccionWeb.java (new URL esta deprecado en Java 20)
-  java.net.URI uri = java.net.URI.create(urlString);
-  URL url = uri.toURL();
+```java
+// application.properties
+app.envio.automatico=false
 
-  // JournalConeccionServices.java
-  @SuppressWarnings("deprecation")   // Tailer de commons-io
-  logger.info("Escuchando el simphony {}", file.getAbsolutePath());
+// MiddlewareSimphony.java
+if (envioAutomatico) {
+    enviarHttpPOST(jsonPayload);
+} else {
+    logger.info("Modo manual activo: NO se envió HTTP...");
+}
+```
 
-======================================================================
-PENDIENTES
-======================================================================
-- Impresion con impresora fisica: no se pudo validar (no hay impresora en el entorno de pruebas).
-- RayBag: falta confirmar con el jefe que significa exactamente (hoy: retencion de 30 dias).
-- Rendimiento: falta medir con carga real y ajustar el Thread.sleep(500) del watcher.
-- Integracion con la interfaz externa: esa aplicacion no esta en este repositorio.
+## 6. Panel de administración (solo lectura)
+- **Qué se hizo:** Endpoints para ver configuración y estado del sistema sin tocar código.
+- **Dónde:** `ConfigController.java` (archivo nuevo) · `ImpresionFactura.java:67-71`
+- **Para qué:** Que el jefe vea configuración, historial, rendimiento y retención sin entrar al proyecto.
+- **Cómo funciona:** Lee las propiedades con `@Value` y las devuelve en JSON; la API key va enmascarada.
+- **Endpoints:** `/api/admin/config` · `/api/admin/historico-checks` · `/api/admin/performance` · `/api/admin/raybag` · `/api/impresion/pendientes-total`
+
+```java
+@Value("${app.envio.automatico:true}")
+private boolean envioAutomatico;
+
+@GetMapping("/config")
+public ResponseEntity<Map<String, Object>> config() {
+    Map<String, Object> cfg = new LinkedHashMap<>();
+    cfg.put("app.envio.automatico", envioAutomatico);
+    return ResponseEntity.ok(cfg);
+}
+```
+
+## 7. Cola de reintentos con ID único
+- **Qué se hizo:** Cada factura pendiente tiene id único y el job trabaja por id, no por posición.
+- **Dónde:** `FacturaPendienteService.java:37, 66-75, 94-112, 114-128, 133-142` · `ReintentarFacturasJob.java:43-90`
+- **Para qué:** Que el reintento nunca procese, incremente o borre la factura equivocada.
+- **Cómo funciona:** El servicio genera el UUID al encolar (y se lo asigna a los registros antiguos); el job pide eliminar o incrementar por id.
+
+```java
+// FacturaPendienteService.java
+factura.put("id", UUID.randomUUID().toString());
+
+public synchronized void eliminarPorId(String id) {
+    List<Map<String, Object>> pendientes = leerPendientes();
+    boolean eliminada = pendientes.removeIf(f -> id.equals(f.get("id")));
+    if (eliminada) guardarPendientes(pendientes);
+}
+```
+
+## 8. Seguridad de rutas (path traversal)
+- **Qué se hizo:** Los endpoints que leen XML solo aceptan archivos de carpetas autorizadas y ya no muestran errores internos.
+- **Dónde:** `RutaArchivoService.java` (archivo nuevo) · `application.properties:24` · `DianController.java:43-92` · `TestController.java:37-56`
+- **Para qué:** Evitar que alguien lea archivos ajenos del servidor y no filtrar datos internos.
+- **Cómo funciona:** Se resuelve la ruta canónica y se compara con las carpetas base; si no está dentro responde 400 "Acceso Denegado". Para sumar una carpeta se agrega en `app.rutas.permitidas`.
+
+```java
+// RutaArchivoService.java - resolverPermitido()
+File archivo = new File(ruta).getCanonicalFile();
+Path destino = archivo.toPath().toAbsolutePath().normalize();
+for (String base : basesPermitidas()) {
+    if (destino.startsWith(Paths.get(base).toAbsolutePath().normalize())) {
+        return archivo;   // permitido
+    }
+}
+return null;   // fuera de las carpetas autorizadas
+```
+
+## 9. Medición de rendimiento
+- **Qué se hizo:** Se mide cuánto demora cada operación clave y se expone por API.
+- **Dónde:** `MetricasService.java` (archivo nuevo) · `MiddlewareSimphony.java:144, 884, 1064` · `ReintentarFacturasJob.java` · `DianController.java`
+- **Para qué:** Saber con datos dónde está el cuello de botella (parseo, envío HTTP o reintentos).
+- **Cómo funciona:** Cada punto medido registra el tiempo en memoria y el endpoint devuelve por operación: muestras, mínimo, promedio y máximo en ms.
+
+```java
+long inicio = System.nanoTime();
+try {
+    ... operacion ...
+} finally {
+    metricasService.registrar("procesarXML", System.nanoTime() - inicio);
+}
+```
+
+## 10. Retención RayBag (30 días, no borra)
+- **Qué se hizo:** Job diario que archiva lo que ya cumplió 30 días (lo mueve, nunca lo borra).
+- **Dónde:** `RetencionArchivoService.java` (archivo nuevo) · `application.properties:27-30` · `ConfigController.java` (`/api/admin/raybag`)
+- **Para qué:** Cumplir la retención de un mes sin perder información.
+- **Cómo funciona:** Recorre las carpetas configuradas y mueve los archivos con más de 30 días a `archivo/yyyy-MM/`; corre a las 2:15 AM.
+
+```java
+long cutoff = System.currentTimeMillis() - (diasRetencion * 24L * 60L * 60L * 1000L);
+if (Files.getLastModifiedTime(archivo).toMillis() < cutoff) {
+    Files.move(archivo, destino, StandardCopyOption.REPLACE_EXISTING);  // archiva, no borra
+}
+```
+
+## 11. Limpiezas menores
+- **Qué se hizo:** Quitamos warnings y dejamos el código prolijo.
+- **Dónde:** `ConeccionWeb.java` · `JournalConeccionServices.java` · `ImpresionFactura.java` · `MiddlewareSimphony.java` · `MiddlewareSimphonyTest.java` · `.gitignore`
+- **Para qué:** Que no haya ruido en el editor ni se suban archivos generados al repositorio.
+- **Cómo funciona:** Cambios puntuales de código y exclusiones en `.gitignore`.
+
+```java
+// ConeccionWeb.java (new URL está deprecado en Java 20)
+java.net.URI uri = java.net.URI.create(urlString);
+URL url = uri.toURL();
+
+// JournalConeccionServices.java
+@SuppressWarnings("deprecation")   // Tailer de commons-io
+logger.info("Escuchando el simphony {}", file.getAbsolutePath());
+```
+
+---
+
+## Pendientes
+- Impresión con impresora física: no se pudo validar (no hay impresora en el entorno de pruebas).
+- RayBag: falta confirmar con el jefe qué significa exactamente (hoy: retención de 30 días).
+- Rendimiento: falta medir con carga real y ajustar el `Thread.sleep(500)` del watcher.
+- Integración con la interfaz externa: esa aplicación no está en este repositorio.
 - Panel admin: hoy es solo lectura (editar y usuario/rol admin queda a definir).
-- Menores: warnings del pom (org.json duplicado), deprecations del Tailer y System.out en ProbadorCufe.
+- Menores: warnings del pom (org.json duplicado), deprecations del Tailer y `System.out` en ProbadorCufe.
