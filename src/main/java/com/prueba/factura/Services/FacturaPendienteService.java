@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
@@ -39,9 +40,10 @@ public class FacturaPendienteService {
             factura.put("ultimo_error", error);
 
             pendientes.add(factura);
-            guardarPendientes(pendientes);
-
-            logger.warn("Factura guardada en cola pendiente. Total pendientes: {}", pendientes.size());
+            if (guardarPendientes(pendientes)) {
+                logger.warn("Factura guardada en {}. Total pendientes: {}",
+                        Paths.get(pendientesFile).toAbsolutePath(), pendientes.size());
+            }
         } catch (Exception e) {
             logger.error("Error guardando factura pendiente: {}", e.getMessage());
         }
@@ -64,12 +66,14 @@ public class FacturaPendienteService {
         }
     }
 
-    public synchronized void guardarPendientes(List<Map<String, Object>> pendientes) {
+    public synchronized boolean guardarPendientes(List<Map<String, Object>> pendientes) {
+        Path path = Paths.get(pendientesFile).toAbsolutePath();
         try {
-            Path path = Paths.get(pendientesFile);
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(path.toFile(), pendientes);
+            return true;
         } catch (IOException e) {
-            logger.error("Error guardando facturas pendientes: {}", e.getMessage());
+            logger.error("Error guardando facturas pendientes en {}: {}", path, e.getMessage());
+            return false;
         }
     }
 
@@ -90,6 +94,52 @@ public class FacturaPendienteService {
             pendientes.remove(index);
             guardarPendientes(pendientes);
             logger.info("Factura eliminada de cola pendiente. Restantes: {}", pendientes.size());
+        }
+    }
+
+    public synchronized String payloadDeDocumento(String cufe, String numero) {
+        for (Map<String, Object> factura : leerPendientes()) {
+            String json = String.valueOf(factura.getOrDefault("json_payload", ""));
+            JsonNode nodo = cuerpo(json);
+            if (nodo == null) {
+                continue;
+            }
+            String cufeNodo = nodo.path("cufe").asText("");
+            String numeroNodo = nodo.path("Prefijo").asText("") + nodo.path("numero_factura").asText("");
+            if ((!cufeNodo.isBlank() && cufeNodo.equals(cufe))
+                    || (!numeroNodo.isBlank() && numeroNodo.equals(numero))) {
+                return nodo.isTextual() ? nodo.asText() : nodo.toString();
+            }
+        }
+        return "";
+    }
+
+    public synchronized void quitarDocumento(String cufe) {
+        if (cufe == null || cufe.isBlank()) {
+            return;
+        }
+        List<Map<String, Object>> pendientes = leerPendientes();
+        boolean cambio = pendientes.removeIf(factura -> {
+            JsonNode nodo = cuerpo(String.valueOf(factura.getOrDefault("json_payload", "")));
+            return nodo != null && cufe.equals(nodo.path("cufe").asText(""));
+        });
+        if (cambio) {
+            guardarPendientes(pendientes);
+        }
+    }
+
+    private JsonNode cuerpo(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            JsonNode nodo = objectMapper.readTree(json);
+            if (nodo.has("body") && (nodo.has("headers") || nodo.has("targetUrl"))) {
+                return nodo.get("body");
+            }
+            return nodo;
+        } catch (Exception e) {
+            return null;
         }
     }
 

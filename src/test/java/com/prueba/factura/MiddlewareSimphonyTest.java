@@ -44,14 +44,18 @@ class MiddlewareSimphonyTest {
         assertEquals("11496", factura.get("numero_ticket"));
         assertEquals("PitaSchnitzel", factura.get("producto"));
         assertEquals("1", factura.get("cantidad"));
-        assertEquals("49800.00", factura.get("precio_unitario"));
-        assertEquals("49800.00", factura.get("subtotal"));
-        assertEquals("4611.00", factura.get("propina"));
-        assertEquals("54411.00", factura.get("total"));
+        assertEquals("49800", factura.get("precio_unitario"));
+        assertEquals("49800", factura.get("subtotal"));
+        assertEquals("4611", factura.get("propina"));
+        assertEquals("54411", factura.get("total"));
         assertEquals("Pravda", factura.get("restaurante"));
         assertEquals("17401", factura.get("workstation_id"));
         assertEquals("Aux1Pravda", factura.get("workstation_nombre"));
         assertEquals("TRUE", factura.get("genera_documento"));
+
+        Map<String, String> desdeTexto = MiddlewareSimphony.extraerDatosFactura(xmlContenido);
+        assertEquals("11496", desdeTexto.get("numero_ticket"));
+        assertEquals("TRUE", desdeTexto.get("genera_documento"));
 
         Files.deleteIfExists(temporal);
     }
@@ -135,7 +139,7 @@ class MiddlewareSimphonyTest {
 
                 assertTrue(factura.get("impuestos_json").contains("\"base_imponible\":\"51111.00\""));
                 assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"4089.00\""));
-                assertEquals("51111.00", factura.get("base_imponible_total"));
+                assertEquals("51111", factura.get("base_imponible_total"));
 
                 Files.deleteIfExists(temporal);
         }
@@ -146,5 +150,56 @@ class MiddlewareSimphonyTest {
         File inexistente = new File("C:/ruta/inexistente/prueba.xml");
 
         assertThrows(IllegalStateException.class, () -> middleware.extraerDatosFactura(inexistente));
+    }
+
+    @Test
+    void leeElChequeAunqueElTextoTraigaBasuraAntesDelXml() {
+        String xml = "\uFEFFxx<Root><Check CheckNum=\"10010\" Id=\"1\" HarmonyId=\"2\" WsID=\"8729\" Timestamp=\"2026-10-27T12:19:54\"/></Root>";
+
+        Map<String, String> datos = MiddlewareSimphony.extraerDatosFactura(xml);
+
+        assertEquals("10010", datos.get("numero_ticket"));
+    }
+
+    @Test
+    void laPropinaUsaElPuntoComoMilesYElItemLlevaElImpuesto() {
+        String xml = """
+                <Root>
+                    <Check CheckNum="10017"/>
+                    <OraPayloadEntityField field="CheckSubtotal" value="20.000"/>
+                    <OraPayloadEntityField field="CheckAutoServiceCharge" value="1.852"/>
+                    <OraPayloadEntityField field="CheckTotalDue" value="21.852"/>
+                    <OraPayloadEntityMI>
+                        <OraPayloadEntityField field="Name" value="AgPanna1000Pet"/>
+                        <OraPayloadEntityField field="MiObjNum" value="200001"/>
+                        <OraPayloadEntityField field="SalesCount" value="1"/>
+                        <OraPayloadEntityField field="Total" value="20000"/>
+                        <OraPayloadEntityField field="DE_SATCOM_CodigoImpuesto" value="04"/>
+                        <OraPayloadEntityField field="DE_SATCOM_NombreImpuesto" value="INC 8%"/>
+                        <OraPayloadEntityField field="DE_SATCOM_Porc_Impuestos" value="8"/>
+                        <OraPayloadEntityField field="TaxData" type="List">
+                            <ValueList>
+                                <GenericParameterList>
+                                    <OraPayloadEntityFieldGenericParameter field="Tax" value="1481.481481"/>
+                                    <OraPayloadEntityFieldGenericParameter field="Taxable" value="18519"/>
+                                </GenericParameterList>
+                            </ValueList>
+                        </OraPayloadEntityField>
+                    </OraPayloadEntityMI>
+                </Root>
+                """;
+
+        Map<String, String> factura = MiddlewareSimphony.extraerDatosFactura(xml);
+
+        assertEquals("1852", factura.get("propina"));
+        assertEquals("20000", factura.get("subtotal"));
+        assertEquals("21852", factura.get("total"));
+        assertTrue(factura.get("items_json").contains("\"precio\":18519"));
+        assertTrue(factura.get("items_json").contains("\"precio_unitario\":18519"));
+        assertTrue(factura.get("items_json").contains("\"Total\":20000"));
+        assertTrue(factura.get("items_json").contains("\"codigo\":\"04\""));
+        assertTrue(factura.get("items_json").contains("\"base\":\"18519.00\""));
+        assertTrue(factura.get("items_json").contains("\"valor\":\"1481.00\""));
+        assertTrue(factura.get("impuestos_json").contains("\"monto_impuesto\":\"1481.00\""));
     }
 }

@@ -31,3 +31,13 @@ build/
 
 ### VS Code ###
 .vscode/
+
+config/harmony.properties
+instalacion/*.jar
+instalacion/FacturaZonaK.exe
+instalacion/FacturaZonaK.xml
+instalacion/FacturaZonaK.wrapper.log
+instalacion/logs/
+logs/
+logo-factura.png
+logo-factura.png.tmp

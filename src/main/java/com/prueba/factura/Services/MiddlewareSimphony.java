@@ -1,19 +1,17 @@
 package com.prueba.factura.Services;
 
 import java.io.File;
+import java.io.StringReader;
 import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -24,6 +22,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -32,26 +32,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.prueba.factura.dto.ResultadoFiscal;
 
 
 @Service
-public class MiddlewareSimphony implements CommandLineRunner {
+public class MiddlewareSimphony {
 
     private static final Logger logger = LoggerFactory.getLogger(MiddlewareSimphony.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${app.inbox.directory}")
-    private String dirInbox;
 
     @Value("${app.processed.directory}")
     private String dirProcessed;
@@ -78,10 +76,16 @@ public class MiddlewareSimphony implements CommandLineRunner {
     private String emissionPointId;
 
     @Autowired
-    private FacturaCounterService facturaCounterService;
+    private SecuenciaService secuenciaService;
 
     @Autowired
     private FacturaPendienteService facturaPendienteService;
+
+    @Autowired
+    private FacturaEnviadaService facturaEnviadaService;
+
+    @Autowired
+    private PortalEnvioService portalEnvio;
 
     @Autowired
     private Impresion impresion;
@@ -93,58 +97,6 @@ public class MiddlewareSimphony implements CommandLineRunner {
             .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-
-    @Override
-    public void run(String... args) throws Exception{
-        logger.info("Iniciando Vigilante de la carpeta de Simphony...");
-        try{
-            Files.createDirectories(Paths.get(dirInbox));
-            Files.createDirectories(Paths.get(dirProcessed));
-        }
-        catch(Exception e){
-            logger.error("Error al crear los directorios inbox/processed", e);
-        }
-        Thread threadWatcher = new Thread(this::iniciarWatchService);
-        threadWatcher.setDaemon(true);
-        threadWatcher.start();
-    }
-
-    private void iniciarWatchService(){
-        try{
-            WatchService watchService = FileSystems.getDefault().newWatchService();
-                Path pathInbox = Paths.get(dirInbox);
-                pathInbox.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
-
-                logger.info("Vigilando la carpeta: {}", dirInbox);
-
-                while(true){
-                    WatchKey key = watchService.take(); 
-                    //esto espera a que llegue la informacion
-
-                    for(WatchEvent<?> event : key.pollEvents()){
-                        WatchEvent.Kind<?> kind = event.kind();
-
-                        if(kind == StandardWatchEventKinds.ENTRY_CREATE){
-                            Path fileName = (Path) event.context();
-                            String nombreArchivo = fileName.toString();
-
-                            if(nombreArchivo.endsWith(".xml")){
-                                logger.info("Nuevo XML detectado!!: {}", nombreArchivo);
-
-                                File xmlFile = new File(dirInbox, nombreArchivo);
-
-                                Thread.sleep(500);
-                                procesarXML(xmlFile);
-                            }
-                        }
-                    }
-                    boolean reset = key.reset();
-                    if(!reset) break;
-                }
-        }catch(Exception e){
-            logger.error("Error en el WatchService:", e);
-        }
-    }
 
     private static List<Map<String, Object>> extraerProductos(Document doc){
         List<Map<String, Object>> productos = new ArrayList<>();
@@ -175,14 +127,18 @@ public class MiddlewareSimphony implements CommandLineRunner {
             String porcImpuesto = itemFields.getOrDefault("DE_SATCOM_Porc_Impuestos", "0.00");
             String nombreImpuesto = itemFields.getOrDefault("DE_SATCOM_NombreImpuesto", "IVA");
 
-            long totalItem = redondearEntero(parseDoubleSafe(totalItemStr.replace(',', '.'), 0.0));
+            long totalItem = parseDineroEntero(totalItemStr);
             double cantidad = parseDoubleSafe(cantidadStr.replace(',', '.'), 0);
             if(cantidad <= 0) cantidad = 1.0;
             double porcentajeImp = parseDoubleSafe(porcImpuesto.replace(',', '.'), 0.0);
 
             long baseImponible;
             long valorImpuesto;
-            if (porcentajeImp > 0) {
+            long[] impuestoMaterial = impuestoDelMaterial(itemElement);
+            if (impuestoMaterial != null) {
+                baseImponible = impuestoMaterial[0];
+                valorImpuesto = impuestoMaterial[1];
+            } else if (porcentajeImp > 0) {
                 baseImponible = redondearEntero(totalItem / (1.0 + (porcentajeImp / 100.0)));
                 valorImpuesto = totalItem - baseImponible;
             } else {
@@ -190,29 +146,37 @@ public class MiddlewareSimphony implements CommandLineRunner {
                 valorImpuesto = 0L;
             }
             long precioUnitarioSinImpuesto = redondearEntero(baseImponible / cantidad);
-            String cantidadFormateada = cantidad == Math.rint(cantidad)
-                ? Long.toString(Math.round(cantidad))
-                : Double.toString(cantidad);
 
             Map<String, Object> itemMap = new LinkedHashMap<>();
             itemMap.put("codigo", codigo);
             itemMap.put("nombre", nombreProducto);
             itemMap.put("descripcion", nombreProducto);
             itemMap.put("unidad_medida", "94");
-            itemMap.put("cantidad", cantidadFormateada);
-            itemMap.put("Total", formatoDineroEntero(totalItem));
-            itemMap.put("precio", formatoDineroEntero(precioUnitarioSinImpuesto));
-            itemMap.put("descuento", "0.00");
-            itemMap.put("subtotal", formatoDineroEntero(baseImponible));
+            if (cantidad == Math.rint(cantidad)) {
+                itemMap.put("cantidad", Math.round(cantidad));
+            } else {
+                itemMap.put("cantidad", cantidad);
+            }
+            itemMap.put("Total", totalItem);
+            itemMap.put("total", totalItem);
+            itemMap.put("precio", precioUnitarioSinImpuesto);
+            itemMap.put("precio_unitario", precioUnitarioSinImpuesto);
+            itemMap.put("descuento", 0);
+            itemMap.put("subtotal", baseImponible);
 
             List<Map<String, String>> impuestosItem = new ArrayList<>();
-            if(!codImpuesto.isBlank() && porcentajeImp > 0){
+            if(!codImpuesto.isBlank() && (porcentajeImp > 0 || valorImpuesto > 0)){
+                String porcentajeTexto = String.format(Locale.US, "%.2f", porcentajeImp);
+                String baseTexto = formatoImpuesto(baseImponible);
+                String valorTexto = formatoImpuesto(valorImpuesto);
+                String nombre = nombreImpuesto.isBlank() ? "IVA" : nombreImpuesto;
                 Map<String, String> impMap = new LinkedHashMap<>();
                 impMap.put("codigo", codImpuesto);
-                impMap.put("nombre", nombreImpuesto.isBlank() ? "IVA" : nombreImpuesto);
-                impMap.put("porcentaje", String.format(Locale.US, "%.2f", porcentajeImp));
-                impMap.put("base", formatoDineroEntero(baseImponible));
-                impMap.put("valor", formatoDineroEntero(valorImpuesto));
+                impMap.put("nombre", nombre);
+                impMap.put("numero_impuesto", "1");
+                impMap.put("porcentaje", porcentajeTexto);
+                impMap.put("base", baseTexto);
+                impMap.put("valor", valorTexto);
                 impuestosItem.add(impMap);
             }
             itemMap.put("impuestos", impuestosItem);
@@ -266,8 +230,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
             impuestoFinal.put("nombre_impuesto", String.valueOf(valores.get("nombre")));
             impuestoFinal.put("numero_impuesto", String.valueOf(contador++));
             impuestoFinal.put("porcentaje_impuesto", String.valueOf(valores.get("porcentaje")));
-            impuestoFinal.put("base_imponible", formatoDineroEntero((long) valores.get("base")));
-            impuestoFinal.put("monto_impuesto", formatoDineroEntero((long) valores.get("monto")));
+            impuestoFinal.put("base_imponible", formatoImpuesto((long) valores.get("base")));
+            impuestoFinal.put("monto_impuesto", formatoImpuesto((long) valores.get("monto")));
             lista.add(impuestoFinal);
         }
         return lista;
@@ -330,7 +294,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
             try{
                 porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
-                total = redondearEntero(Double.parseDouble(totalItemStr.replace(',', '.')));
+                total = parseDineroEntero(totalItemStr);
             } catch (NumberFormatException e) {
                 continue;
             }
@@ -338,10 +302,9 @@ public class MiddlewareSimphony implements CommandLineRunner {
             long baseImponibleItem;
             long montoImpuestoItem;
             if (!taxableStr.isBlank() && !taxAmountStr.isBlank()) {
-                baseImponibleItem = redondearEntero(Double.parseDouble(taxableStr.replace(',', '.')));
-                montoImpuestoItem = redondearEntero(Double.parseDouble(taxAmountStr.replace(',', '.')));
-                // Preferir coherencia total = base + impuesto cuando el Total del ítem es confiable
-                if (total > 0 && porcentaje > 0) {
+                baseImponibleItem = parseDineroEntero(taxableStr);
+                montoImpuestoItem = parseDineroEntero(taxAmountStr);
+                if (total > 0 && porcentaje > 0 && baseImponibleItem + montoImpuestoItem != total) {
                     baseImponibleItem = redondearEntero(total / (1.0 + (porcentaje / 100.0)));
                     montoImpuestoItem = total - baseImponibleItem;
                 }
@@ -383,7 +346,7 @@ public class MiddlewareSimphony implements CommandLineRunner {
 
             try {
                 double porcentaje = Double.parseDouble(porcentajeStr.replace(',', '.'));
-                long total = redondearEntero(Double.parseDouble(subtotalFacturaStr.replace(',', '.')));
+                long total = parseDineroEntero(subtotalFacturaStr);
                 if (!codigo.isEmpty() && porcentaje > 0 && total > 0) {
                     long baseImponible = redondearEntero(total / (1.0 + (porcentaje / 100.0)));
                     long montoImpuesto = total - baseImponible;
@@ -413,8 +376,8 @@ public class MiddlewareSimphony implements CommandLineRunner {
             impuestoFinal.put("nombre_impuesto", nombreImpuesto);
             impuestoFinal.put("numero_impuesto", String.valueOf(contador++));
             impuestoFinal.put("porcentaje_impuesto", String.format(Locale.US ,"%.2f", valores.get("porcentaje")));
-            impuestoFinal.put("base_imponible", formatoDineroEntero(redondearEntero(valores.get("base"))));
-            impuestoFinal.put("monto_impuesto", formatoDineroEntero(redondearEntero(valores.get("monto"))));
+            impuestoFinal.put("base_imponible", formatoImpuesto(redondearEntero(valores.get("base"))));
+            impuestoFinal.put("monto_impuesto", formatoImpuesto(redondearEntero(valores.get("monto"))));
 
             listaImpuestosLimpia.add(impuestoFinal);
         }
@@ -453,13 +416,19 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             Map<String, Object> pagoMap = new LinkedHashMap<>();
 
             int tenderMediaId = parseIntSafe(objectNumberStr, 0);
-            long tenderAmount = redondearEntero(parseDoubleSafe(montoStr, 0.00));
-            long tipAmount = redondearEntero(parseDoubleSafe(tipStr, 0.00));
+            long tenderAmount = parseDineroEntero(montoStr);
+            long tipAmount = parseDineroEntero(tipStr);
 
             pagoMap.put("tenderMediaId", tenderMediaId);
             pagoMap.put("tenderName", nombrePago);
+            pagoMap.put("medio_pago", nombrePago);
             pagoMap.put("tenderAmount", tenderAmount);
+            pagoMap.put("valor", tenderAmount);
             pagoMap.put("tipAmount", tipAmount);
+            String formaPago = campos.getOrDefault("DE_SATCOM_CodigoFiscal", "").trim();
+            if (!formaPago.isBlank()) {
+                pagoMap.put("forma_pago", formaPago);
+            }
 
             if (!refNum.isBlank()) {
                 pagoMap.put("referenceNumber", refNum);
@@ -484,14 +453,216 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 throw new IllegalArgumentException("El archivo XML es demasiado grande");
             }
 
-            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            dbFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-            dbFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-            dbFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            return extraerDocumento(nuevoDocumentBuilder().parse(xmlFile));
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Error leyendo el XML de factura: " + e.getMessage(), e);
+        }
+    }
 
-            DocumentBuilder dbBuilder = dbFactory.newDocumentBuilder();
-            Document doc = dbBuilder.parse(xmlFile);
+    public static Map<String, String> extraerDatosFactura(String xml) {
+        try {
+            if (xml == null || xml.isBlank()) {
+                throw new IllegalArgumentException("XML vacio");
+            }
+            xml = prepararXml(xml);
+            if (xml.length() > 10_000_000) {
+                throw new IllegalArgumentException("El XML es demasiado grande");
+            }
+            return extraerDocumento(nuevoDocumentBuilder().parse(new InputSource(new StringReader(xml))));
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Error leyendo el XML de factura: " + e.getMessage(), e);
+        }
+    }
 
+    public static String prepararXml(String xml) {
+        if (xml == null) {
+            return "";
+        }
+        String texto = quitarMarca(xml);
+        int inicio = texto.indexOf('<');
+        if (inicio < 0 && texto.contains("%3C")) {
+            texto = quitarMarca(decodificar(texto));
+            inicio = texto.indexOf('<');
+        }
+        if (inicio > 0) {
+            texto = texto.substring(inicio);
+        }
+        return texto;
+    }
+
+    private static String quitarMarca(String texto) {
+        int i = 0;
+        while (i < texto.length() && texto.charAt(i) == '\uFEFF') {
+            i++;
+        }
+        return i == 0 ? texto : texto.substring(i);
+    }
+
+    private static String decodificar(String valor) {
+        try {
+            return URLDecoder.decode(valor, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ex) {
+            return valor;
+        }
+    }
+
+    private static String numeroCheque(String xml) {
+        if (xml == null) {
+            return "";
+        }
+        Matcher marca = Pattern.compile("CheckNum\\s*=\\s*\"([^\"]*)\"").matcher(xml);
+        return marca.find() ? marca.group(1) : "";
+    }
+
+    static boolean esNotaCredito(String numeroReferencia) {
+        return numeroReferencia != null
+                && !numeroReferencia.isBlank()
+                && !"N/A".equalsIgnoreCase(numeroReferencia.trim());
+    }
+
+    /**
+     * Nota crédito DIAN: el documento es 91, la razón de anulación es 2 y la
+     * operación 20 indica que referencia una factura electrónica.
+     */
+    static void marcarDocumento(Map<String, Object> jsonMap, String numeroReferencia,
+            String fechaReferencia, String motivo, String cufeReferencia) {
+        if (!esNotaCredito(numeroReferencia)) {
+            jsonMap.put("DocumentType", "01");
+            jsonMap.put("tipo_documento", "FV");
+            return;
+        }
+        jsonMap.put("DocumentType", "91");
+        jsonMap.put("tipo_documento", "91");
+        jsonMap.put("credit_note_type_code", "2");
+        jsonMap.put("tipo_operacion", "20");
+        jsonMap.put("CreditNoteNumber", numeroReferencia.trim());
+        ponerSiHay(jsonMap, "CreditNoteInvoiceDate", fechaReferencia);
+        ponerSiHay(jsonMap, "CreditNoteReason", motivo);
+        String prefijo = prefijoDe(numeroReferencia);
+        long numero = numeroDe(numeroReferencia);
+        if (!prefijo.isBlank()) {
+            jsonMap.put("prefijo_referencia", prefijo);
+        }
+        if (numero > 0) {
+            jsonMap.put("numero_referencia", numero);
+        }
+        Map<String, String> referencia = new LinkedHashMap<>();
+        referencia.put("numeroDocumento", numeroReferencia.trim());
+        referencia.put("cufe", cufeReferencia == null ? "" : cufeReferencia.trim());
+        jsonMap.put("factura_referencia", referencia);
+    }
+
+    static String cufeDeNumero(Map<String, Map<String, String>> registros, String numero) {
+        if (registros == null || numero == null || numero.isBlank()) {
+            return "";
+        }
+        String buscado = numero.trim();
+        for (Map<String, String> registro : registros.values()) {
+            if (registro == null) {
+                continue;
+            }
+            String guardado = registro.getOrDefault("numero_factura_completo", "");
+            if (buscado.equalsIgnoreCase(guardado)) {
+                String cufe = registro.getOrDefault("cufe", "");
+                if (cufe != null && !cufe.isBlank()) {
+                    return cufe.trim();
+                }
+            }
+        }
+        return "";
+    }
+
+    private void completarEmisor(Map<String, String> datos) {
+        if (secuenciaService == null) {
+            return;
+        }
+        SecuenciaService.DatosEmisor emisor = secuenciaService.emisor();
+        aplicarEmisor(datos, emisor);
+        datos.put("textos_fiscales", emisor.textosFiscales() == null ? "" : emisor.textosFiscales());
+        datos.put("pie_factura", emisor.pieFactura() == null ? "" : emisor.pieFactura());
+    }
+
+    static void aplicarEmisor(Map<String, String> datos, SecuenciaService.DatosEmisor emisor) {
+        if (datos == null || emisor == null) {
+            return;
+        }
+        ponerTexto(datos, "RazonSocial", emisor.razonSocial());
+        ponerTexto(datos, "RucEmisor", emisor.nit());
+        ponerTexto(datos, "Direccion", emisor.direccion());
+        ponerTexto(datos, "Telefono", emisor.telefono());
+    }
+
+    private static void ponerTexto(Map<String, String> datos, String clave, String valor) {
+        if (valor != null && !valor.isBlank()) {
+            datos.put(clave, valor.trim());
+        }
+    }
+
+    private static void ponerSiHay(Map<String, Object> jsonMap, String clave, String valor) {
+        if (valor == null || valor.isBlank() || "N/A".equalsIgnoreCase(valor.trim())) {
+            return;
+        }
+        jsonMap.put(clave, valor.trim());
+    }
+
+    static String prefijoDe(String completo) {
+        if (completo == null) {
+            return "";
+        }
+        return completo.replaceAll("\\d", "");
+    }
+
+    static long numeroDe(String completo) {
+        if (completo == null) {
+            return 0L;
+        }
+        String digitos = completo.replaceAll("\\D", "");
+        if (digitos.isBlank()) {
+            return 0L;
+        }
+        return Long.parseLong(digitos);
+    }
+
+    static Map<String, String> clienteParaPortal(JsonNode cliente, String identificacionRespaldo) {
+        if (cliente == null || cliente.isNull() || cliente.isMissingNode()
+                || cliente.path("identificacion").asText("").isBlank()) {
+            return objetoCliente("13", identificacionRespaldo, "CONSUMIDOR FINAL");
+        }
+        String nombre = cliente.path("nombre").asText("").trim();
+        String apellido = cliente.path("apellido").asText("").trim();
+        String razon = (nombre + " " + apellido).trim();
+        if (razon.isBlank()) {
+            razon = "CONSUMIDOR FINAL";
+        }
+        return objetoCliente("13", cliente.path("identificacion").asText("").trim(), razon);
+    }
+
+    private static Map<String, String> objetoCliente(String tipo, String numero, String razon) {
+        if (numero == null || numero.isBlank()) {
+            return null;
+        }
+        Map<String, String> objeto = new LinkedHashMap<>();
+        objeto.put("tipo_identificacion", tipo);
+        objeto.put("numero_identificacion", numero.trim());
+        objeto.put("razon_social", razon);
+        return objeto;
+    }
+
+    private static DocumentBuilder nuevoDocumentBuilder() throws Exception {
+        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+        dbFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+        dbFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+        dbFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+        dbFactory.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        return dbFactory.newDocumentBuilder();
+    }
+
+    private static Map<String, String> extraerDocumento(Document doc) {
+        try {
             Element rootElement = doc.getDocumentElement();
             if(rootElement == null || rootElement.getElementsByTagName("Check").getLength() == 0){
                 throw new IllegalArgumentException("Estructura XML invalida");
@@ -606,16 +777,14 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             //Propina 
             List<Map<String, Object>> productos = extraerProductos(doc);
             String propinaRaw = result.getOrDefault("propina", "0.00");
-            long propinaNum = redondearEntero(parseDoubleSafe(propinaRaw.replace(',', '.'), 0.0));
+            long propinaNum = parseDineroEntero(propinaRaw);
             result.put("propina", formatoDineroEntero(propinaNum));
 
             if (result.containsKey("total")) {
-                result.put("total", formatoDineroEntero(redondearEntero(
-                    parseDoubleSafe(result.get("total").replace(',', '.'), 0.0))));
+                result.put("total", formatoDineroEntero(parseDineroEntero(result.get("total"))));
             }
             if (result.containsKey("subtotal")) {
-                result.put("subtotal", formatoDineroEntero(redondearEntero(
-                    parseDoubleSafe(result.get("subtotal").replace(',', '.'), 0.0))));
+                result.put("subtotal", formatoDineroEntero(parseDineroEntero(result.get("subtotal"))));
             }
 
             List<Map<String, String>> impuestos = consolidarImpuestosDesdeProductos(productos);
@@ -683,8 +852,27 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
     public void procesarXML(File xmlFile){
         try{
-            Map<String, String> datos = extraerDatosFactura(xmlFile);
+            ResultadoFiscal resultado = procesarDatos(extraerDatosFactura(xmlFile), true);
+            Path origen = xmlFile.toPath();
+            Path destino = Paths.get(dirProcessed, xmlFile.getName());
+            Files.move(origen, destino, StandardCopyOption.REPLACE_EXISTING);
+            logger.info("Archivo movido a carpeta de procesados /processed. {}", resultado.getMensaje());
+        } catch(Exception e){
+            logger.error("ERROR procesando el archivo XML {}: {}", xmlFile.getName(), e.getMessage(), e);
+        }
+    }
 
+    public ResultadoFiscal procesarPayload(String xml) {
+        try {
+            return procesarDatos(extraerDatosFactura(xml), false);
+        } catch (Exception e) {
+            logger.error("ERROR procesando payload de Harmony: {}", e.getMessage(), e);
+            return ResultadoFiscal.error("Error al procesar el payload",
+                    FormatoFacturaHarmony.rechazo("Error al procesar el payload", numeroCheque(xml)));
+        }
+    }
+
+    private ResultadoFiscal procesarDatos(Map<String, String> datos, boolean imprimirLocal) throws Exception {
             String checkNum = datos.getOrDefault("numero_ticket", "");
             String checkId = datos.getOrDefault("check_id", "");
             String harmonyId = datos.getOrDefault("harmony_id", "");
@@ -696,6 +884,7 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             String guid = datos.getOrDefault("guid_transaccion", "N/A");
             String fechaFac = obtenerFechaCufe(timestamp);
             String horaFac = obtenerHoraCufe(timestamp);
+            completarEmisor(datos);
 
             double valFacNum = redondearEntero(Double.parseDouble(datos.getOrDefault("base_imponible_total", "0.00").replace(',', '.')));
             double ivaNum = 0.00;
@@ -755,6 +944,8 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
             String numeroFacturaCompleto = registroExistente == null ? null
                 : registroExistente.get("numero_factura_completo");
             String cufeGenerado = registroExistente == null ? null : registroExistente.get("cufe");
+            String prefijoPortal = numeroFacturaCompleto == null ? "" : prefijoDe(numeroFacturaCompleto);
+            long numeroPortal = numeroFacturaCompleto == null ? 0L : numeroDe(numeroFacturaCompleto);
 
             logger.info("=== Datos Extraídos del XML ===");
             logger.info("• Ticket (CheckNum): {}", checkNum);
@@ -774,7 +965,16 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
             if("TRUE".equalsIgnoreCase(generaDoc)){
                 if (registroExistente == null) {
-                    numeroFacturaCompleto = prefijoFac + facturaCounterService.obtenerSiguienteNumero();
+                    String tipoSecuencia = esNotaCredito(datos.get("CreditNoteNumber"))
+                            ? SecuenciaService.NOTA_CREDITO
+                            : SecuenciaService.FACTURA;
+                    SecuenciaService.NumeroSecuencia asignado = secuenciaService.siguiente(tipoSecuencia);
+                    String prefijoSecuencia = asignado.prefijo() == null || asignado.prefijo().isBlank()
+                            ? prefijoFac
+                            : asignado.prefijo();
+                    numeroFacturaCompleto = prefijoSecuencia + asignado.numero();
+                    prefijoPortal = prefijoSecuencia;
+                    numeroPortal = asignado.numero();
                     String numAdquiriente = cliente == null
                         ? identificacionConsumidorFinal
                         : cliente.path("identificacion").asText(identificacionConsumidorFinal);
@@ -813,11 +1013,14 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("Rango Inicial", datos.getOrDefault("RangoIni", "N/A"));
                 jsonMap.put("Rango Final", datos.getOrDefault("RangoFin", "N/A"));
                 
-                jsonMap.put("Base", formatoDineroEntero(redondearEntero(valFacNum)));
-                jsonMap.put("INC", formatoDineroEntero(redondearEntero(incNum)));
-                jsonMap.put("Subtotal", formatoDineroEntero(redondearEntero(totalFiscalNum)));
-                jsonMap.put("Propina", datos.getOrDefault("propina", "0.00"));
-                jsonMap.put("Total", datos.getOrDefault("total", "0.00"));
+                long propinaNumero = parseDineroEntero(datos.getOrDefault("propina", "0"));
+                long totalNumero = parseDineroEntero(datos.getOrDefault("total", "0"));
+                jsonMap.put("Base", redondearEntero(valFacNum));
+                jsonMap.put("INC", redondearEntero(incNum));
+                jsonMap.put("Subtotal", redondearEntero(totalFiscalNum));
+                jsonMap.put("Propina", propinaNumero);
+                jsonMap.put("propina", propinaNumero);
+                jsonMap.put("Total", totalNumero);
                 
                 jsonMap.put("Cajero", datos.getOrDefault("empleado", "N/A"));
                 jsonMap.put("Mesa", "N/A");
@@ -832,40 +1035,67 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
                 jsonMap.put("pagos", objectMapper.readTree(datos.getOrDefault("pagos_json", "[]")));
                 jsonMap.put("cufeGenerado", cufeGenerado);
                 jsonMap.put("cufe", cufeGenerado);
+                jsonMap.put("textos_fiscales", datos.getOrDefault("textos_fiscales", ""));
+                jsonMap.put("pie_factura", datos.getOrDefault("pie_factura", ""));
                 jsonMap.put("qr", urlQr);
                 jsonMap.put("qr_url", urlQr);
 
                 JsonNode nodoFacturaCompleta = objectMapper.valueToTree(jsonMap);
+                String ticketImpresion = objectMapper.writeValueAsString(nodoFacturaCompleta);
+                String clienteTexto = jsonMap.get("cliente") instanceof String texto ? texto : "Consumidor Final";
+                String fechaDoc = String.valueOf(jsonMap.getOrDefault("fecha_hora", ""));
+                String cheque = String.valueOf(jsonMap.getOrDefault("numero_ticket", ""));
+                long totalDoc = numeroValor(jsonMap.get("Total"));
+                boolean nota = esNotaCredito(datos.get("CreditNoteNumber"));
+                String respuestaHarmony = FormatoFacturaHarmony.exito(nodoFacturaCompleta);
 
-                impresion.imprimirFactura(nodoFacturaCompleta);
+                if (imprimirLocal) {
+                    try {
+                        impresion.imprimirFactura(nodoFacturaCompleta);
+                    } catch (Exception e) {
+                        logger.error("No se pudo imprimir la factura en local. Harmony imprime con la respuesta.", e);
+                    }
+                }
                 
-            String crediterNoteNumber = datos.getOrDefault("CreditNoteNumber", "N/A");
-            boolean esNotaCredito = !crediterNoteNumber.isBlank() && !crediterNoteNumber.equals("N/A");
-            if(esNotaCredito){  
+            if (esNotaCredito(datos.get("CreditNoteNumber"))) {
                 logger.info("=== Iniciando Flujo de Nota de Crédito ===");
-                jsonMap.put("DocumentType", "91");
-                jsonMap.put("CreditNoteNumber", datos.getOrDefault("CreditNoteNumber", "N/A"));
-                jsonMap.put("CreditNoteInvoiceDate", datos.getOrDefault("CreditNoteInvoiceDate", "N/A"));
-                jsonMap.put("CreditNoteReason", datos.getOrDefault("CreditNoteReason", "N/A"));
-            } else{
+            } else {
                 logger.info("=== Iniciando Flujo de Factura ===");
-                jsonMap.put("DocumentType", "01");
             }
+            String cufeOriginal = "";
+            if (esNotaCredito(datos.get("CreditNoteNumber"))) {
+                cufeOriginal = cufeDeFacturaReferenciada(datos.get("CreditNoteNumber"));
+                if (cufeOriginal.isBlank()) {
+                    logger.warn("La nota crédito no tiene el CUFE de la factura {}", datos.get("CreditNoteNumber"));
+                }
+            }
+            marcarDocumento(jsonMap,
+                    datos.get("CreditNoteNumber"),
+                    datos.get("CreditNoteInvoiceDate"),
+                    datos.get("CreditNoteReason"),
+                    cufeOriginal);
+                jsonMap.put("numero_factura", numeroPortal);
+                jsonMap.put("Prefijo", prefijoPortal);
+                jsonMap.put("cliente", clienteParaPortal(cliente, identificacionCliente));
+                aplicarFormaPortal(jsonMap);
+                cuadrarNotaCredito(jsonMap);
                 String jsonPayload = objectMapper.writeValueAsString(jsonMap);
                 guardarRegistroCufe(identificadorFactura, numeroFacturaCompleto, cufeGenerado);
-                enviarHttpPOST(jsonPayload);
-            } else {
-                logger.info("La factura no requiere procesamiento de documento fiscal");
+                ResultadoEnvio envio = enviarHttpPOST(jsonPayload);
+                registrarEnviada(identificadorFactura, numeroFacturaCompleto, prefijoPortal, numeroPortal,
+                        cufeGenerado, fechaDoc, clienteTexto, nota ? "NC" : "FV", totalDoc, ticketImpresion,
+                        cheque, envio, jsonPayload);
+                return ResultadoFiscal.ok(numeroFacturaCompleto, cufeGenerado, urlQr, respuestaHarmony);
             }
 
-            Path origen = xmlFile.toPath();
-            Path destino = Paths.get(dirProcessed, xmlFile.getName());
-            Files.move(origen, destino, StandardCopyOption.REPLACE_EXISTING);
-            logger.info("Archivo movido a carpeta de procesados /processed\n");
-
-        } catch(Exception e){
-            logger.error("ERROR procesando el archivo XML {}: {}", xmlFile.getName(), e.getMessage(), e);
-        }
+            logger.info("La factura no requiere procesamiento de documento fiscal");
+            Map<String, String> identidad = new LinkedHashMap<>();
+            identidad.put("caja_wsid", wsId);
+            identidad.put("harmony_id", harmonyId);
+            identidad.put("numero_ticket", checkNum);
+            identidad.put("fecha_hora", datos.getOrDefault("fecha_hora", ""));
+            return ResultadoFiscal.sinDocumentoFiscal(
+                    FormatoFacturaHarmony.sinDocumento(objectMapper.valueToTree(identidad)));
     }
 
     private String construirIdentificadorFactura(Map<String, String> datos) {
@@ -881,6 +1111,33 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
 
         return "ticket:" + datos.getOrDefault("numero_ticket", "")
             + "|fecha:" + datos.getOrDefault("fecha_hora", "");
+    }
+
+    private String cufeDeFacturaReferenciada(String numero) {
+        String cufe = cufeEnArchivo(numero);
+        if (!cufe.isBlank()) {
+            return cufe;
+        }
+        if (facturaEnviadaService == null) {
+            return "";
+        }
+        String desdeReporte = facturaEnviadaService.cufeDeNumero(numero);
+        return desdeReporte == null ? "" : desdeReporte;
+    }
+
+    private synchronized String cufeEnArchivo(String numero) {
+        Path path = Paths.get(cufeRegistryFile);
+        if (!Files.exists(path)) {
+            return "";
+        }
+        try {
+            Map<String, Map<String, String>> registros = objectMapper.readValue(
+                    path.toFile(), new TypeReference<Map<String, Map<String, String>>>() {});
+            return cufeDeNumero(registros, numero);
+        } catch (Exception e) {
+            logger.warn("No se pudo buscar el CUFE de {}: {}", numero, e.getMessage());
+            return "";
+        }
     }
 
     private synchronized Map<String, String> leerRegistroCufe(String identificador) {
@@ -972,41 +1229,36 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
     }
 
 
-    private void enviarHttpPOST(String jsonPayload){
-        try{
-            String destino = (targetUrl != null && !targetUrl.isBlank()) ? targetUrl : apiUrl;
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(destino))
-            .timeout(Duration.ofSeconds(10))
-            .header("Content-Type", "application/json")
-            .header("User-Agent", "FacturaApp/1.0")
-            .header("X-API-KEY", apiKey != null ? apiKey : "");
-
-            if (emissionPointId != null && !emissionPointId.isBlank()) {
-                requestBuilder.header("X-Emission-Point-ID", emissionPointId);
-            }
-
-            HttpRequest request = requestBuilder
-            .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-            .build();
-
-            logger.info("Enviando datos a la API: {}", destino);
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if(response.statusCode() >= 200 && response.statusCode() < 300) {
-                logger.info("Respuesta exitosa: {}", response.statusCode());
-            } else {
-                logger.warn("Respuesta con estado: {} body: {}", response.statusCode(), response.body());
-                facturaPendienteService.guardarFacturaPendiente(jsonPayload, "Status code:" + response.statusCode());
-            }
-            System.out.println("Respuesta del servidor - Codigo Status" + response.statusCode());
-        }catch(HttpStatusCodeException e){
-            logger.error("Error HTTP al enviar datos a la API: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            facturaPendienteService.guardarFacturaPendiente(jsonPayload, "HTTP Status code:" + e.getStatusCode());
-        }catch(Exception e){
-            logger.error("Error al enviar la solicitud Http POST guardando en cola pendiente", e);
-            facturaPendienteService.guardarFacturaPendiente(jsonPayload, e.getMessage());
+    private ResultadoEnvio enviarHttpPOST(String jsonPayload){
+        String destino = (targetUrl != null && !targetUrl.isBlank()) ? targetUrl : apiUrl;
+        logger.info("Enviando datos a la API: {}", destino);
+        logger.info("Cuerpo JSON: {}", jsonPayload);
+        if (portalEnvio == null) {
+            facturaPendienteService.guardarFacturaPendiente(jsonPayload, "No se pudo contactar el portal");
+            return new ResultadoEnvio(false, "No se pudo contactar el portal");
         }
+        PortalEnvioService.Resultado respuesta = portalEnvio.enviar(jsonPayload);
+        if (!respuesta.aceptado()) {
+            facturaPendienteService.guardarFacturaPendiente(jsonPayload, respuesta.mensaje());
+        }
+        return new ResultadoEnvio(respuesta.aceptado(), respuesta.mensaje());
+    }
+
+    private void registrarEnviada(String id, String numero, String prefijo, long consecutivo, String cufe,
+            String fecha, String cliente, String tipo, long total, String ticket, String cheque,
+            ResultadoEnvio envio, String payload) {
+        if (facturaEnviadaService == null) {
+            return;
+        }
+        try {
+            facturaEnviadaService.registrar(id, numero, prefijo, consecutivo, cufe, fecha, cliente, tipo, total,
+                    ticket, cheque, envio.aceptado() ? "enviada" : "error", envio.mensaje(), payload);
+        } catch (Exception e) {
+            logger.error("No se pudo registrar la factura en el reporte", e);
+        }
+    }
+
+    private record ResultadoEnvio(boolean aceptado, String mensaje) {
     }
 
     private String generarUrlQr(String cufe){
@@ -1016,11 +1268,328 @@ private static List<Map<String, Object>> extraerTenderMediaList(Document doc) {
         return "https://catalogo-vpfe.dian.gov.co/document/searchqr?documentkey=" + cufe;
     }
 
+    static long parseDineroEntero(String value) {
+        return redondearEntero(parseDinero(value));
+    }
+
+    static double parseDinero(String value) {
+        if (value == null || value.isBlank()) {
+            return 0.0;
+        }
+        String texto = value.trim().replace(" ", "");
+        boolean tienePunto = texto.indexOf('.') >= 0;
+        boolean tieneComa = texto.indexOf(',') >= 0;
+        if (tienePunto && tieneComa) {
+            boolean puntoEsDecimal = texto.lastIndexOf('.') > texto.lastIndexOf(',');
+            char miles = puntoEsDecimal ? ',' : '.';
+            texto = texto.replace(String.valueOf(miles), "");
+            if (!puntoEsDecimal) {
+                texto = texto.replace(',', '.');
+            }
+            return parseDoubleSafe(texto, 0.0);
+        }
+        if (tienePunto || tieneComa) {
+            char separador = tienePunto ? '.' : ',';
+            String[] partes = texto.split(separador == '.' ? "\\." : ",", -1);
+            boolean gruposDeMil = partes.length > 1 && !partes[0].isEmpty() && partes[0].length() <= 3;
+            for (int i = 1; gruposDeMil && i < partes.length; i++) {
+                gruposDeMil = partes[i].length() == 3;
+            }
+            if (gruposDeMil) {
+                return parseDoubleSafe(String.join("", partes), 0.0);
+            }
+            if (separador == ',') {
+                texto = texto.replace(',', '.');
+            }
+            return parseDoubleSafe(texto, 0.0);
+        }
+        return parseDoubleSafe(texto, 0.0);
+    }
+
+    private static long[] impuestoDelMaterial(Element item) {
+        NodeList campos = item.getElementsByTagName("OraPayloadEntityField");
+        String base = "";
+        String valor = "";
+        for (int i = 0; i < campos.getLength(); i++) {
+            Element campo = (Element) campos.item(i);
+            if (!"TaxData".equals(campo.getAttribute("field"))) {
+                continue;
+            }
+            NodeList valores = campo.getElementsByTagName("OraPayloadEntityFieldGenericParameter");
+            for (int k = 0; k < valores.getLength(); k++) {
+                Element valorCampo = (Element) valores.item(k);
+                String nombre = valorCampo.getAttribute("field");
+                if ("Taxable".equals(nombre)) {
+                    base = valorCampo.getAttribute("value");
+                } else if ("Tax".equals(nombre)) {
+                    valor = valorCampo.getAttribute("value");
+                }
+            }
+        }
+        if (base.isBlank() || valor.isBlank()) {
+            return null;
+        }
+        return new long[] { parseDineroEntero(base), parseDineroEntero(valor) };
+    }
+
+    static void cuadrarNotaCredito(Map<String, Object> jsonMap) {
+        String tipo = String.valueOf(jsonMap.get("tipo_documento"));
+        if (!"91".equals(tipo) && !"NC".equals(tipo)) {
+            return;
+        }
+        long base = 0L;
+        long impuesto = 0L;
+        Object items = jsonMap.get("items");
+        if (items instanceof List<?> lista) {
+            for (Object raw : lista) {
+                if (!(raw instanceof Map<?, ?> item)) {
+                    continue;
+                }
+                long baseLinea = numeroValor(item.get("subtotal"));
+                if (baseLinea == 0L) {
+                    baseLinea = numeroValor(item.get("precio"));
+                }
+                base += baseLinea;
+                Object impuestosItem = item.get("impuestos");
+                if (!(impuestosItem instanceof List<?> impuestosLinea)) {
+                    continue;
+                }
+                for (Object impRaw : impuestosLinea) {
+                    if (impRaw instanceof Map<?, ?> imp) {
+                        impuesto += numeroValor(imp.get("valor"));
+                    }
+                }
+            }
+        }
+        if (base == 0L) {
+            base = numeroValor(jsonMap.get("Base"));
+        }
+        if (impuesto == 0L) {
+            impuesto = numeroValor(jsonMap.get("INC"));
+        }
+        jsonMap.put("Base", base);
+        jsonMap.put("INC", impuesto);
+        jsonMap.put("Subtotal", base);
+        Object impuestos = jsonMap.get("impuestos");
+        if (!(impuestos instanceof List<?> cabeceras)) {
+            return;
+        }
+        for (Object raw : cabeceras) {
+            if (raw instanceof Map<?, ?> mapa) {
+                @SuppressWarnings("unchecked")
+                Map<String, String> cabecera = (Map<String, String>) mapa;
+                cabecera.put("base", formatoImpuesto(base));
+                cabecera.put("valor", formatoImpuesto(impuesto));
+            }
+        }
+    }
+
+    static void aplicarFormaPortal(Map<String, Object> jsonMap) {
+        long totalFactura = numeroValor(jsonMap.get("Total"));
+        long propinaFactura = numeroValor(jsonMap.get("propina"));
+        if (propinaFactura == 0L) {
+            propinaFactura = numeroValor(jsonMap.get("Propina"));
+        }
+        jsonMap.put("items", itemsParaPortal(jsonMap.get("items")));
+        jsonMap.put("impuestos", impuestosCabeceraParaPortal(jsonMap.get("impuestos")));
+        jsonMap.put("pagos", pagosParaPortal(jsonMap.get("pagos"), totalFactura, propinaFactura));
+        jsonMap.put("propina", propinaFactura);
+        jsonMap.remove("Propina");
+        for (String clave : List.of(
+                "qr_url", "cufeGenerado", "Mesa", "Cajero", "Telefono", "Dirección",
+                "hora_hora", "clave_tecnica_xml", "Fecha de Generacion", "Fecha Resolucion",
+                "Fecha Inicial", "Fecha Final", "Rango Inicial", "Rango Final", "restaurante",
+                "fecha_procesamiento", "identificacion_cliente", "cliente_encontrado",
+                "textos_fiscales", "pie_factura")) {
+            jsonMap.remove(clave);
+        }
+        for (String clave : List.of("RucEmisor", "RazonSocial", "Direccion", "Tel")) {
+            Object valor = jsonMap.get(clave);
+            if (valor == null || valor.toString().isBlank() || "N/A".equalsIgnoreCase(valor.toString().trim())) {
+                jsonMap.remove(clave);
+            }
+        }
+    }
+
+    static List<Map<String, Object>> itemsParaPortal(Object items) {
+        List<Map<String, Object>> lista = new ArrayList<>();
+        JsonNode nodo = comoArreglo(items);
+        if (nodo == null) {
+            return lista;
+        }
+        for (JsonNode item : nodo) {
+            long totalLinea = numeroNodo(item, "total", "Total");
+            long precioUnitario = numeroNodo(item, "precio_unitario", "precio");
+            long baseLinea = baseDelItem(item);
+            if (baseLinea == 0L) {
+                baseLinea = precioUnitario;
+            }
+            Map<String, Object> limpio = new LinkedHashMap<>();
+            limpio.put("codigo", textoNodo(item, "codigo"));
+            limpio.put("descripcion", textoNodo(item, "descripcion", "nombre"));
+            limpio.put("unidad_medida", textoNodo(item, "unidad_medida").isBlank() ? "94" : textoNodo(item, "unidad_medida"));
+            JsonNode cantidad = item.get("cantidad");
+            if (cantidad != null && cantidad.isNumber()) {
+                limpio.put("cantidad", cantidad.numberValue());
+            } else {
+                limpio.put("cantidad", numeroNodo(item, "cantidad"));
+            }
+            limpio.put("precio", precioUnitario);
+            limpio.put("precio_unitario", precioUnitario);
+            limpio.put("descuento", numeroNodo(item, "descuento"));
+            limpio.put("subtotal", baseLinea);
+            limpio.put("total", totalLinea);
+            limpio.put("impuestos", impuestosDeItem(item.get("impuestos")));
+            lista.add(limpio);
+        }
+        return lista;
+    }
+
+    private static long baseDelItem(JsonNode item) {
+        JsonNode impuestos = item.get("impuestos");
+        if (impuestos == null || !impuestos.isArray() || impuestos.isEmpty()) {
+            return 0L;
+        }
+        long base = 0L;
+        for (JsonNode impuesto : impuestos) {
+            base += numeroNodo(impuesto, "base", "base_imponible");
+        }
+        return base;
+    }
+
+    static List<Map<String, String>> impuestosCabeceraParaPortal(Object impuestos) {
+        List<Map<String, String>> lista = new ArrayList<>();
+        JsonNode nodo = comoArreglo(impuestos);
+        if (nodo == null) {
+            return lista;
+        }
+        for (JsonNode impuesto : nodo) {
+            lista.add(impuestoCorto(impuesto, true));
+        }
+        return lista;
+    }
+
+    static List<Map<String, Object>> pagosParaPortal(Object pagos, long totalFactura, long propinaFactura) {
+        List<Map<String, Object>> lista = new ArrayList<>();
+        JsonNode nodo = comoArreglo(pagos);
+        if (nodo == null || nodo.isEmpty()) {
+            return lista;
+        }
+        long restante = totalFactura;
+        int indice = 0;
+        for (JsonNode pago : nodo) {
+            long ofrecido = numeroNodo(pago, "valor", "tenderAmount");
+            long aplicado = Math.min(Math.max(ofrecido, 0L), Math.max(restante, 0L));
+            restante -= aplicado;
+            Map<String, Object> limpio = new LinkedHashMap<>();
+            if (pago.hasNonNull("tenderMediaId")) {
+                limpio.put("tenderMediaId", pago.get("tenderMediaId").numberValue());
+            }
+            String medio = textoNodo(pago, "medio_pago", "tenderName");
+            if (!medio.isBlank()) {
+                limpio.put("medio_pago", medio);
+            }
+            String forma = textoNodo(pago, "forma_pago");
+            if (!forma.isBlank()) {
+                limpio.put("forma_pago", forma);
+            }
+            limpio.put("valor", aplicado);
+            limpio.put("propina", indice == 0 ? propinaFactura : 0L);
+            lista.add(limpio);
+            indice++;
+        }
+        return lista;
+    }
+
+    private static List<Map<String, String>> impuestosDeItem(JsonNode impuestos) {
+        List<Map<String, String>> lista = new ArrayList<>();
+        if (impuestos == null || !impuestos.isArray()) {
+            return lista;
+        }
+        for (JsonNode impuesto : impuestos) {
+            lista.add(impuestoCorto(impuesto, false));
+        }
+        return lista;
+    }
+
+    private static Map<String, String> impuestoCorto(JsonNode impuesto, boolean conNumero) {
+        Map<String, String> limpio = new LinkedHashMap<>();
+        limpio.put("codigo", textoNodo(impuesto, "codigo", "codigo_impuesto"));
+        limpio.put("nombre", textoNodo(impuesto, "nombre", "nombre_impuesto"));
+        if (conNumero) {
+            String numero = textoNodo(impuesto, "numero_impuesto");
+            if (!numero.isBlank()) {
+                limpio.put("numero_impuesto", numero);
+            }
+        }
+        limpio.put("porcentaje", textoNodo(impuesto, "porcentaje", "porcentaje_impuesto"));
+        limpio.put("base", textoNodo(impuesto, "base", "base_imponible"));
+        limpio.put("valor", textoNodo(impuesto, "valor", "monto_impuesto"));
+        return limpio;
+    }
+
+    private static JsonNode comoArreglo(Object valor) {
+        if (valor instanceof JsonNode nodo && nodo.isArray()) {
+            return nodo;
+        }
+        return null;
+    }
+
+    private static long numeroValor(Object valor) {
+        if (valor instanceof Number numero) {
+            return numero.longValue();
+        }
+        if (valor instanceof JsonNode nodo) {
+            return numeroNodo(nodo);
+        }
+        return parseDineroEntero(valor == null ? "0" : valor.toString());
+    }
+
+    private static long numeroNodo(JsonNode nodo, String... campos) {
+        if (nodo == null) {
+            return 0L;
+        }
+        if (campos.length == 0) {
+            return nodo.isNumber() ? nodo.longValue() : parseDineroEntero(nodo.asText("0"));
+        }
+        for (String campo : campos) {
+            JsonNode valor = nodo.get(campo);
+            if (valor == null || valor.isNull()) {
+                continue;
+            }
+            if (valor.isNumber()) {
+                return valor.longValue();
+            }
+            String texto = valor.asText("");
+            if (!texto.isBlank()) {
+                return parseDineroEntero(texto);
+            }
+        }
+        return 0L;
+    }
+
+    private static String textoNodo(JsonNode nodo, String... campos) {
+        if (nodo == null) {
+            return "";
+        }
+        for (String campo : campos) {
+            JsonNode valor = nodo.get(campo);
+            if (valor != null && !valor.isNull() && !valor.asText("").isBlank()) {
+                return valor.asText();
+            }
+        }
+        return "";
+    }
+
     private static long redondearEntero(double valor) {
         return Math.round(valor);
     }
 
     private static String formatoDineroEntero(long valor) {
+        return Long.toString(valor);
+    }
+
+    private static String formatoImpuesto(long valor) {
         return String.format(Locale.US, "%.2f", (double) valor);
     }
 

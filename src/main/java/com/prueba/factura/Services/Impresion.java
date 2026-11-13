@@ -3,8 +3,6 @@ package com.prueba.factura.Services;
 import java.io.OutputStream;
 import java.net.Socket;
 
-import javax.imageio.ImageIO;
-
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.*;
@@ -13,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -33,6 +30,9 @@ public class Impresion {
 
     @Autowired 
     private GenerarQr generarQr;
+
+    @Autowired
+    private LogoFactura logoFactura;
     
     private void imprimirLineaTexto(String etiqueta, String valor, int tamanoLetra, OutputStream out) throws Exception {
         BufferedImage imgTexto = TextoImagen.crearTexto(etiqueta + ": " + valor, tamanoLetra);
@@ -90,11 +90,11 @@ private void conEspacio(String etique, String valor, int tamanoLetra, OutputStre
             byte[] centro    = new byte[] {0x1B, 0x61, 0x01};
             byte[] cortarPapel = new byte[] {0x1D, 0x56, 0x41, 0x03};
 
-            // Imagen de Zonak
-            ClassPathResource resource = new ClassPathResource("Zonak.jpeg");
-            BufferedImage logo = ImageIO.read(resource.getInputStream());
-            out.write(centro);
-            ImagenFactura.imprimirImagen(logo, out);
+            BufferedImage logo = logoFactura == null ? null : logoFactura.imagen();
+            if (logo != null) {
+                out.write(centro);
+                ImagenFactura.imprimirImagen(logo, out);
+            }
 //------------------------------------------------------------------------------------------------------------------------------------------------
 /*                                                                   Detalles de la empresa                                                       */ 
             out.write(("\n").getBytes("IBM850"));
@@ -110,20 +110,14 @@ private void conEspacio(String etique, String valor, int tamanoLetra, OutputStre
             sinLinea(datos.path("Direccion").asText("N/A"), 28, out);
             out.write(centro);
             sinLinea(datos.path("Tel").asText("N/A"), 28, out);
-            out.write(centro);
-            sinLinea("Act 5611 13.8x1000", 28, out);
-            out.write(centro);
-            sinLinea("Act 5630 13.8x1000", 28, out);
-            out.write(centro);
-            sinLinea("Act 5613 13.8x1000", 28, out);
-            out.write(centro);
-            sinLinea("Act 5619 13.8x1000", 28, out);
-            out.write(centro);
-            sinLinea("Act 4711 4.14x1000", 28, out);
-            out.write(centro);
-            sinLinea("Gran Contribuyente ICA", 28, out);
-            out.write(centro);
-            sinLinea("Agente Retenedor de IVA", 28, out);
+            for (String linea : TextosFactura.lineas(datos, "textos_fiscales", TextosFactura.FISCALES)) {
+                out.write(centro);
+                if (linea.isBlank()) {
+                    out.write(("\n").getBytes("IBM850"));
+                } else {
+                    sinLinea(linea, 28, out);
+                }
+            }
             out.write(("\n").getBytes("IBM850"));
             out.write("\n_________________________________________\n".getBytes("IBM850"));
             out.write(("\n").getBytes("IBM850"));
@@ -212,23 +206,14 @@ private void conEspacio(String etique, String valor, int tamanoLetra, OutputStre
             out.write("\n_________________________________________\n".getBytes("IBM850"));
 //------------------------------------------------------------------------------------------------------------------------------------------------------
 /*                                                                   Detalles de impuestos Incluidos                                                  */
-            out.write(centro);
-            sinLinea("Impuestos Incluidos", 24, out);
-            out.write(centro);
-            sinLinea( "Advertencia de Propina", 26, out);
-            out.write(centro);
-            sinLinea("En la parte posterior de este documento", 26, out);
-            out.write(("\n").getBytes("IBM850"));
-            out.write(centro);
-            sinLinea("Implementado Por Inverleoka SAS", 26, out);
-            out.write(centro);
-            sinLinea("NIT 8605108638", 26, out);
-            out.write(centro);
-            sinLinea("Integrador: Hospitality", 26, out);
-            out.write(centro);
-            sinLinea("Restaurants Automation SAS", 26, out);
-            out.write(centro);
-            sinLinea("NIT 901518527-2", 26, out);
+            for (String linea : TextosFactura.lineas(datos, "pie_factura", TextosFactura.PIE)) {
+                out.write(centro);
+                if (linea.isBlank()) {
+                    out.write(("\n").getBytes("IBM850"));
+                } else {
+                    sinLinea(linea, 26, out);
+                }
+            }
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------
 /*                                                                   Detalles del CUFE Y QR                                                           */
@@ -249,7 +234,7 @@ private void conEspacio(String etique, String valor, int tamanoLetra, OutputStre
 
         } catch (Exception e) {
             logger.error("Error al imprimir la factura", e);
-            e.printStackTrace();
+            throw new IllegalStateException("No se pudo imprimir la factura", e);
         }
     }
 }

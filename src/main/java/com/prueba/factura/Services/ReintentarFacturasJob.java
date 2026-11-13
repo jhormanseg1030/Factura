@@ -1,10 +1,5 @@
 package com.prueba.factura.Services;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +7,6 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,17 +22,11 @@ public class ReintentarFacturasJob {
     @Autowired
     private FacturaPendienteService facturaPendienteService;
 
-    @Value("${app.webhook.url}")
-    private String apiUrl;
+    @Autowired
+    private FacturaEnviadaService facturaEnviadaService;
 
-    @Value("${app.target.url:${app.webhook.url}}")
-    private String targetUrl;
-
-    @Value("${app.api.key}")
-    private String apiKey;
-
-    @Value("${app.emission.point.id:}")
-    private String emissionPointId;
+    @Autowired
+    private PortalEnvioService portalEnvio;
 
     @Scheduled(fixedDelayString = "${app.reintento.delay:60000}")
     public void reintentarFacturasPendientes() {
@@ -64,14 +52,15 @@ public class ReintentarFacturasJob {
             String jsonPayload = (String) factura.get("json_payload");
 
             try {
-                boolean exito = enviarHTTP(jsonPayload);
-
-                if (exito) {
+                String body = extraerBodyFactura(jsonPayload);
+                PortalEnvioService.Resultado respuesta = portalEnvio.enviar(body);
+                facturaEnviadaService.marcarEnvio(body, respuesta.aceptado(), respuesta.mensaje());
+                if (respuesta.aceptado()) {
                     logger.info("Factura {} reenviada exitosamente", i + 1);
                     indicesAEliminar.add(i);
                 } else {
                     facturaPendienteService.incrementarIntento(i);
-                    logger.warn("Factura {} falló al reenviar, reintento registrado", i + 1);
+                    logger.warn("Factura {} falló al reenviar: {}", i + 1, respuesta.mensaje());
                 }
             } catch (Exception e) {
                 facturaPendienteService.incrementarIntento(i);
@@ -86,43 +75,6 @@ public class ReintentarFacturasJob {
         int restantes = facturaPendienteService.totalPendientes();
         if (restantes > 0) {
             logger.warn("Quedan {} facturas pendientes en cola", restantes);
-        }
-    }
-
-    private boolean enviarHTTP(String jsonPayload) {
-        try {
-            String body = extraerBodyFactura(jsonPayload);
-            String destino = (targetUrl != null && !targetUrl.isBlank()) ? targetUrl : apiUrl;
-
-            HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(5))
-                .build();
-
-            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(destino))
-                .timeout(Duration.ofSeconds(10))
-                .header("Content-Type", "application/json")
-                .header("User-Agent", "FacturaApp/1.0")
-                .header("X-API-KEY", apiKey != null ? apiKey : "");
-
-            if (emissionPointId != null && !emissionPointId.isBlank()) {
-                requestBuilder.header("X-Emission-Point-ID", emissionPointId);
-            }
-
-            HttpRequest request = requestBuilder
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                logger.warn("Reintento falló con status {} body: {}", response.statusCode(), response.body());
-                return false;
-            }
-            return true;
-        } catch (Exception e) {
-            logger.warn("Error en reintento HTTP: {}", e.getMessage());
-            return false;
         }
     }
 

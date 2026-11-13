@@ -4,11 +4,14 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
+import com.prueba.factura.config.HarmonyPuertoConfig;
+
 @SpringBootApplication
 @EnableScheduling
 public class FacturaApplication {
 
 	public static void main(String[] args) {
+		HarmonyPuertoConfig.aplicar(args);
 		SpringApplication.run(FacturaApplication.class, args);
 	}
 
