@@ -5,6 +5,7 @@ import java.io.File;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prueba.factura.Services.DianXmlParserService;
+import com.prueba.factura.Services.MetricasService;
+import com.prueba.factura.Services.RutaArchivoService;
 import com.prueba.factura.dto.DianFacturaDto;
 
 import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
@@ -27,17 +30,27 @@ public class DianController {
     @Autowired
     private DianXmlParserService dianParser;
 
+    @Autowired
+    private RutaArchivoService rutaArchivoService;
+
+    @Autowired
+    private MetricasService metricasService;
+
+    @Value("${app.cufe.registry.file:facturas_cufes.json}")
+    private String cufeRegistryFile;
+
     @RateLimiter(name = "simularPago", fallbackMethod = "rateLimitFallback")
     @GetMapping("/parsear")
     public ResponseEntity<String> parsearXml(@RequestParam(value = "xmlPath", required = false) String xmlPath) {
+        long inicio = System.nanoTime();
         try {
-            String resolvedPath = (xmlPath == null || xmlPath.isBlank())
-                    ? "C:/SimphonyTest/inbox/"
-                    : xmlPath;
+            if (xmlPath == null || xmlPath.isBlank()) {
+                return ResponseEntity.badRequest().body("Debe indicar el archivo XML a procesar");
+            }
 
-            File xmlFile = new File(resolvedPath);
-            if (!xmlFile.exists()) {
-                return ResponseEntity.badRequest().body("El archivo no se encuentra: " + resolvedPath);
+            File xmlFile = rutaArchivoService.resolverPermitido(xmlPath);
+            if (xmlFile == null) {
+                return ResponseEntity.badRequest().body("Acceso Denegado: ruta no permitida o archivo inexistente");
             }
 
             DianFacturaDto factura = dianParser.parsearXml(xmlFile);
@@ -49,16 +62,19 @@ public class DianController {
         } catch (Exception e) {
             logger.error("Error parseando XML DIAN: {}", e.getMessage());
             return ResponseEntity.internalServerError()
-                    .body("Error al parsear el XML DIAN: " + e.getMessage());
+                    .body("Error al procesar la solicitud. Contacte con el administrador.");
+        } finally {
+            metricasService.registrar("api.dian.parsear", System.nanoTime() - inicio);
         }
     }
 
     @GetMapping("/parsear/basicos")
     public ResponseEntity<String> parsearBasicos(@RequestParam(value = "xmlPath") String xmlPath) {
+        long inicio = System.nanoTime();
         try {
-            File xmlFile = new File(xmlPath);
-            if (!xmlFile.exists()) {
-                return ResponseEntity.badRequest().body("El archivo no se encuentra");
+            File xmlFile = rutaArchivoService.resolverPermitido(xmlPath);
+            if (xmlFile == null) {
+                return ResponseEntity.badRequest().body("Acceso Denegado: ruta no permitida o archivo inexistente");
             }
 
             java.util.Map<String, String> datos = dianParser.extraerDatosBasicos(xmlFile);
@@ -69,7 +85,35 @@ public class DianController {
         } catch (Exception e) {
             logger.error("Error parseando XML DIAN: {}", e.getMessage());
             return ResponseEntity.internalServerError()
-                    .body("Error al parsear: " + e.getMessage());
+                    .body("Error al procesar la solicitud. Contacte con el administrador.");
+        } finally {
+            metricasService.registrar("api.dian.parsearBasicos", System.nanoTime() - inicio);
+        }
+    }
+
+    @GetMapping("/cufe")
+    public ResponseEntity<String> buscarPorCufe(@RequestParam("cufe") String cufe) {
+        try {
+            java.nio.file.Path path = java.nio.file.Paths.get(cufeRegistryFile);
+            if (!java.nio.file.Files.exists(path)) {
+                return ResponseEntity.status(404).body("No existe registro de CUFEs");
+            }
+            java.util.Map<String, java.util.Map<String, String>> registros = objectMapper.readValue(path.toFile(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
+            for (java.util.Map.Entry<String, java.util.Map<String, String>> e : registros.entrySet()) {
+                java.util.Map<String, String> v = e.getValue();
+                String c = v.getOrDefault("cufe", "");
+                if (c != null && c.equalsIgnoreCase(cufe)) {
+                    java.util.Map<String, Object> out = new java.util.LinkedHashMap<>();
+                    out.put("identificador", e.getKey());
+                    out.put("numero_factura", v.getOrDefault("numero_factura_completo", "N/A"));
+                    out.put("cufe", c);
+                    return ResponseEntity.ok(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(out));
+                }
+            }
+            return ResponseEntity.status(404).body("CUFE no encontrado");
+        } catch (Exception e) {
+            logger.error("Error buscando CUFE: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body("Error al buscar CUFE");
         }
     }
 

@@ -41,3 +41,9 @@ instalacion/logs/
 logs/
 logo-factura.png
 logo-factura.png.tmp
+facturas_impresas/
+facturas_historico.json
+facturas_pendientes.json
+facturas_cufes.json
+factura_counter.txt
+~$*.docx

@@ -26,10 +26,22 @@ public class ReintentarFacturasJob {
     private FacturaEnviadaService facturaEnviadaService;
 
     @Autowired
+    private MetricasService metricasService;
+
+    @Autowired
     private PortalEnvioService portalEnvio;
 
     @Scheduled(fixedDelayString = "${app.reintento.delay:60000}")
     public void reintentarFacturasPendientes() {
+        long inicioCiclo = System.nanoTime();
+        try {
+            ejecutarCicloReintentos();
+        } finally {
+            metricasService.registrar("reintento.ciclo", System.nanoTime() - inicioCiclo);
+        }
+    }
+
+    private void ejecutarCicloReintentos() {
         List<Map<String, Object>> pendientes = facturaPendienteService.leerPendientes();
 
         if (pendientes.isEmpty()) {
@@ -38,14 +50,15 @@ public class ReintentarFacturasJob {
 
         logger.info("Reintentando {} facturas pendientes...", pendientes.size());
 
-        List<Integer> indicesAEliminar = new ArrayList<>();
+        // Se opera por id estable (no por índice) para no afectar la factura equivocada.
+        List<String> idsAEliminar = new ArrayList<>();
 
-        for (int i = 0; i < pendientes.size(); i++) {
-            Map<String, Object> factura = pendientes.get(i);
+        for (Map<String, Object> factura : pendientes) {
+            String id = factura.get("id") == null ? "" : factura.get("id").toString();
 
             if (facturaPendienteService.superaMaximoIntentos(factura)) {
-                logger.warn("Factura {} excedió máximo de reintentos, requiere intervención manual", i + 1);
-                indicesAEliminar.add(i);
+                logger.warn("Factura pendiente {} excedió máximo de reintentos, requiere intervención manual", id);
+                idsAEliminar.add(id);
                 continue;
             }
 
@@ -56,20 +69,20 @@ public class ReintentarFacturasJob {
                 PortalEnvioService.Resultado respuesta = portalEnvio.enviar(body);
                 facturaEnviadaService.marcarEnvio(body, respuesta.aceptado(), respuesta.mensaje());
                 if (respuesta.aceptado()) {
-                    logger.info("Factura {} reenviada exitosamente", i + 1);
-                    indicesAEliminar.add(i);
+                    logger.info("Factura pendiente {} reenviada exitosamente", id);
+                    idsAEliminar.add(id);
                 } else {
-                    facturaPendienteService.incrementarIntento(i);
-                    logger.warn("Factura {} falló al reenviar: {}", i + 1, respuesta.mensaje());
+                    facturaPendienteService.incrementarIntentoPorId(id);
+                    logger.warn("Factura pendiente {} falló al reenviar: {}", id, respuesta.mensaje());
                 }
             } catch (Exception e) {
-                facturaPendienteService.incrementarIntento(i);
-                logger.warn("Factura {} error al reenviar: {}", i + 1, e.getMessage());
+                facturaPendienteService.incrementarIntentoPorId(id);
+                logger.warn("Factura pendiente {} error al reenviar: {}", id, e.getMessage());
             }
         }
 
-        for (int i = indicesAEliminar.size() - 1; i >= 0; i--) {
-            facturaPendienteService.eliminarFacturaPendiente(indicesAEliminar.get(i));
+        for (String id : idsAEliminar) {
+            facturaPendienteService.eliminarPorId(id);
         }
 
         int restantes = facturaPendienteService.totalPendientes();
